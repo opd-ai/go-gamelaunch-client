@@ -11,7 +11,8 @@ import (
 
 // TerminalView implements dgclient.View using tcell for terminal rendering
 type TerminalView struct {
-	screen tcell.Screen
+	screen   tcell.Screen
+	emulator *TerminalEmulator
 
 	mu     sync.Mutex
 	width  int
@@ -47,6 +48,9 @@ func (v *TerminalView) Init() error {
 	v.screen = screen
 	v.width, v.height = screen.Size()
 
+	// Create terminal emulator
+	v.emulator = NewTerminalEmulator(v.width, v.height)
+
 	// Set up event handling
 	go v.handleEvents()
 
@@ -66,42 +70,57 @@ func (v *TerminalView) Render(data []byte) error {
 		return fmt.Errorf("screen not initialized")
 	}
 
-	// Simple implementation - in reality, you'd need a proper terminal emulator
-	// This is a placeholder that just prints the data
-	// A real implementation would parse ANSI sequences, handle cursor movement, etc.
+	// Process data through terminal emulator
+	v.emulator.ProcessData(data)
 
-	// For now, just write to screen at current position
-	// This is highly simplified and won't handle most terminal sequences correctly
-	x, y := 0, 0
-	for _, b := range data {
-		switch b {
-		case '\n':
-			x = 0
-			y++
-			if y >= v.height {
-				y = v.height - 1
-				// Scroll would happen here
-			}
-		case '\r':
-			x = 0
-		case '\b':
-			if x > 0 {
-				x--
-			}
-		default:
-			if x < v.width && y < v.height {
-				v.screen.SetContent(x, y, rune(b), nil, tcell.StyleDefault)
-				x++
-				if x >= v.width {
-					x = 0
-					y++
-				}
+	// Get the processed screen and render it
+	screenData := v.emulator.GetScreen()
+	cursorX, cursorY := v.emulator.GetCursor()
+
+	// Clear the display
+	v.screen.Clear()
+
+	// Render each cell
+	for y, row := range screenData {
+		for x, cell := range row {
+			if y < v.height && x < v.width {
+				style := v.cellToTcellStyle(cell.Attr)
+				v.screen.SetContent(x, y, cell.Char, nil, style)
 			}
 		}
 	}
 
+	// Set cursor position
+	if cursorY < v.height && cursorX < v.width {
+		v.screen.ShowCursor(cursorX, cursorY)
+	}
+
 	v.screen.Show()
 	return nil
+}
+
+// cellToTcellStyle converts cell attributes to tcell style
+func (v *TerminalView) cellToTcellStyle(attr CellAttributes) tcell.Style {
+	style := tcell.StyleDefault
+
+	// Convert colors
+	fg := tcell.NewRGBColor(int32(attr.Foreground.R), int32(attr.Foreground.G), int32(attr.Foreground.B))
+	bg := tcell.NewRGBColor(int32(attr.Background.R), int32(attr.Background.G), int32(attr.Background.B))
+
+	style = style.Foreground(fg).Background(bg)
+
+	// Apply attributes
+	if attr.Bold {
+		style = style.Bold(true)
+	}
+	if attr.Underline {
+		style = style.Underline(true)
+	}
+	if attr.Reverse {
+		style = style.Reverse(true)
+	}
+
+	return style
 }
 
 // Clear clears the display
@@ -114,6 +133,9 @@ func (v *TerminalView) Clear() error {
 	}
 
 	v.screen.Clear()
+	if v.emulator != nil {
+		v.emulator.eraseScreen()
+	}
 	v.screen.Show()
 	return nil
 }
@@ -126,7 +148,10 @@ func (v *TerminalView) SetSize(width, height int) error {
 	v.width = width
 	v.height = height
 
-	// tcell handles resize automatically, but we store the dimensions
+	if v.emulator != nil {
+		v.emulator.Resize(width, height)
+	}
+
 	return nil
 }
 
@@ -184,6 +209,9 @@ func (v *TerminalView) handleEvents() {
 			case *tcell.EventResize:
 				v.mu.Lock()
 				v.width, v.height = ev.Size()
+				if v.emulator != nil {
+					v.emulator.Resize(v.width, v.height)
+				}
 				v.screen.Sync()
 				v.mu.Unlock()
 			}
