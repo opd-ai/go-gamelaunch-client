@@ -7,3 +7,4 @@ prompt: fmt
 godoc:
 	godocdown -o pkg/dgclient/README.md pkg/dgclient
 	godocdown -o pkg/tui/README.md pkg/tui
+	godocdown -o pkg/webui/README.md pkg/webui
