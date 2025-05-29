@@ -234,6 +234,14 @@ func (sm *StateManager) PollChanges(clientVersion uint64, timeout time.Duration)
 ```
 PollChanges waits for changes since the specified version
 
+#### func (*StateManager) PollChangesWithContext
+
+```go
+func (sm *StateManager) PollChangesWithContext(pollCtx context.Context, version uint64) (*StateDiff, error)
+```
+PollChangesWithContext waits for changes with a context It is a context-aware
+version of PollChanges
+
 #### func (*StateManager) UpdateState
 
 ```go
