@@ -100,6 +100,14 @@ func GenerateExampleConfig() *Config {
 					Method: "password",
 				},
 			},
+			"local-test": {
+				Host:     "localhost",
+				Port:     22,
+				Username: os.Getenv("USER"),
+				Auth: AuthConfig{
+					Method: "agent",
+				},
+			},
 		},
 		Preferences: PreferencesConfig{
 			Terminal:          "xterm-256color",
@@ -110,6 +118,43 @@ func GenerateExampleConfig() *Config {
 			UnicodeEnabled:    true,
 		},
 	}
+}
+
+// ValidateConfig checks if a configuration is valid
+func ValidateConfig(config *Config) error {
+	if config == nil {
+		return fmt.Errorf("config is nil")
+	}
+
+	if len(config.Servers) == 0 {
+		return fmt.Errorf("no servers configured")
+	}
+
+	for name, server := range config.Servers {
+		if server.Host == "" {
+			return fmt.Errorf("server '%s' has no host configured", name)
+		}
+		if server.Username == "" {
+			return fmt.Errorf("server '%s' has no username configured", name)
+		}
+		if server.Auth.Method == "" {
+			return fmt.Errorf("server '%s' has no auth method configured", name)
+		}
+		if server.Auth.Method == "key" && server.Auth.KeyPath == "" {
+			return fmt.Errorf("server '%s' uses key auth but no key_path specified", name)
+		}
+		if server.Port <= 0 {
+			server.Port = 22 // Set default
+		}
+	}
+
+	if config.DefaultServer != "" {
+		if _, exists := config.Servers[config.DefaultServer]; !exists {
+			return fmt.Errorf("default_server '%s' not found in servers list", config.DefaultServer)
+		}
+	}
+
+	return nil
 }
 
 // GetServerConfig retrieves a server configuration by name

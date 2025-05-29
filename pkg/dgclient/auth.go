@@ -131,7 +131,8 @@ type HostKeyCallback interface {
 
 // KnownHostsCallback uses a known_hosts file for verification
 type KnownHostsCallback struct {
-	path string
+	path     string
+	callback ssh.HostKeyCallback // Store the parsed callback for reuse
 }
 
 // NewKnownHostsCallback creates a new known hosts callback
@@ -145,15 +146,16 @@ func NewKnownHostsCallback(path string) (HostKeyCallback, error) {
 		return nil, fmt.Errorf("failed to load known hosts: %w", err)
 	}
 
-	return &KnownHostsCallback{path: path}, nil
+	// Store the parsed callback to avoid reloading the file
+	return &KnownHostsCallback{
+		path:     path,
+		callback: callback,
+	}, nil
 }
 
 func (k *KnownHostsCallback) Check(hostname string, remote net.Addr, key ssh.PublicKey) error {
-	callback, err := knownhosts.New(k.path)
-	if err != nil {
-		return err
-	}
-	return callback(hostname, remote, key)
+	// Use the pre-parsed callback instead of reloading the file
+	return k.callback(hostname, remote, key)
 }
 
 // InsecureHostKeyCallback accepts any host key (NOT FOR PRODUCTION)

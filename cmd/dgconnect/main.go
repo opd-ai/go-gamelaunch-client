@@ -68,6 +68,22 @@ func init() {
 			fmt.Printf("dgconnect %s (commit: %s, built: %s)\n", version, commit, date)
 		},
 	})
+
+	// Init command
+	rootCmd.AddCommand(&cobra.Command{
+		Use:   "init [config-file]",
+		Short: "Generate example configuration file",
+		Long: `Generate an example configuration file with common server settings.
+        
+If no path is specified, creates ~/.dgconnect.yaml by default.
+
+Examples:
+  dgconnect init
+  dgconnect init ./my-config.yaml
+  dgconnect init ~/.config/dgconnect/config.yaml`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: runInitConfig,
+	})
 }
 
 func initConfig() {
@@ -89,4 +105,49 @@ func initConfig() {
 			fmt.Println("Using config file:", viper.ConfigFileUsed())
 		}
 	}
+}
+
+func runInitConfig(cmd *cobra.Command, args []string) error {
+	var configPath string
+
+	if len(args) > 0 {
+		configPath = args[0]
+	} else {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("failed to get home directory: %w", err)
+		}
+		configPath = fmt.Sprintf("%s/.dgconnect.yaml", home)
+	}
+
+	// Check if file already exists
+	if _, err := os.Stat(configPath); err == nil {
+		fmt.Printf("Configuration file already exists at %s\n", configPath)
+		fmt.Print("Do you want to overwrite it? (yes/no): ")
+
+		var response string
+		fmt.Scanln(&response)
+
+		if response != "yes" && response != "y" {
+			fmt.Println("Configuration generation cancelled.")
+			return nil
+		}
+	}
+
+	// Generate example configuration
+	config := GenerateExampleConfig()
+
+	// Save configuration
+	if err := SaveConfig(config, configPath); err != nil {
+		return fmt.Errorf("failed to save configuration: %w", err)
+	}
+
+	fmt.Printf("Example configuration created at: %s\n", configPath)
+	fmt.Println("\nPlease edit the configuration file to match your server settings.")
+	fmt.Println("Key sections to update:")
+	fmt.Println("  - servers.*.host: Your server hostname")
+	fmt.Println("  - servers.*.username: Your username")
+	fmt.Println("  - servers.*.auth: Authentication method and credentials")
+
+	return nil
 }

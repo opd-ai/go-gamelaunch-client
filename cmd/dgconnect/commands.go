@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"net"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/knownhosts"
 	"golang.org/x/term"
 )
 
@@ -204,21 +206,94 @@ func getAuthMethod(user, host string) (dgclient.AuthMethod, error) {
 func getHostKeyCallback() ssh.HostKeyCallback {
 	// Try to use known_hosts file first
 	home, err := os.UserHomeDir()
-	if err == nil {
-		knownHostsPath := fmt.Sprintf("%s/.ssh/known_hosts", home)
-		if _, err := os.Stat(knownHostsPath); err == nil {
-			// In a production version, you'd use knownhosts.New(knownHostsPath)
-			// For now, we'll use an insecure callback with warning
+	if err != nil {
+		if debug {
+			fmt.Printf("Warning: Could not get home directory: %v\n", err)
 		}
+		return createInsecureCallback()
 	}
 
+	knownHostsPath := fmt.Sprintf("%s/.ssh/known_hosts", home)
+	if _, err := os.Stat(knownHostsPath); err != nil {
+		if debug {
+			fmt.Printf("Warning: known_hosts file not found at %s, using insecure callback\n", knownHostsPath)
+		}
+		return createInsecureCallback()
+	}
+
+	// Use known_hosts for verification
+	hostKeyCallback, err := knownhosts.New(knownHostsPath)
+	if err != nil {
+		if debug {
+			fmt.Printf("Warning: Failed to load known_hosts: %v, using insecure callback\n", err)
+		}
+		return createInsecureCallback()
+	}
+
+	// Wrap the callback to provide better error messages and handle unknown hosts
+	return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+		err := hostKeyCallback(hostname, remote, key)
+		if err != nil {
+			// Check if this is an unknown host error
+			if keyErr, ok := err.(*knownhosts.KeyError); ok && len(keyErr.Want) == 0 {
+				// Unknown host - prompt user
+				fmt.Printf("\nWarning: Unknown host %s\n", hostname)
+				fmt.Printf("Host key fingerprint: %s\n", ssh.FingerprintSHA256(key))
+				fmt.Print("Do you want to continue connecting? (yes/no): ")
+
+				var response string
+				fmt.Scanln(&response)
+
+				if response == "yes" || response == "y" {
+					// Add to known_hosts
+					if addErr := addToKnownHosts(knownHostsPath, hostname, key); addErr != nil {
+						fmt.Printf("Warning: Could not add host to known_hosts: %v\n", addErr)
+					} else {
+						fmt.Printf("Host %s added to known_hosts\n", hostname)
+					}
+					return nil
+				}
+				return fmt.Errorf("host key verification failed: user rejected unknown host")
+			}
+
+			// Host key mismatch or other error
+			if keyErr, ok := err.(*knownhosts.KeyError); ok && len(keyErr.Want) > 0 {
+				fmt.Printf("\nHost key verification failed for %s!\n", hostname)
+				fmt.Printf("Expected fingerprint: %s\n", ssh.FingerprintSHA256(keyErr.Want[0].Key))
+				fmt.Printf("Received fingerprint: %s\n", ssh.FingerprintSHA256(key))
+				return fmt.Errorf("host key verification failed: key mismatch")
+			}
+
+			return fmt.Errorf("host key verification failed: %w", err)
+		}
+
+		if debug {
+			fmt.Printf("Host key verified for %s\n", hostname)
+		}
+		return nil
+	}
+}
+
+func createInsecureCallback() ssh.HostKeyCallback {
 	return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
 		if debug {
-			fmt.Printf("Warning: Accepting host key for %s\n", hostname)
+			fmt.Printf("Warning: Using insecure host key callback for %s\n", hostname)
 			fmt.Printf("Fingerprint: %s\n", ssh.FingerprintSHA256(key))
 		}
 		return nil
 	}
+}
+
+func addToKnownHosts(knownHostsPath, hostname string, key ssh.PublicKey) error {
+	f, err := os.OpenFile(knownHostsPath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	line := fmt.Sprintf("%s %s %s\n", hostname, key.Type(), base64.StdEncoding.EncodeToString(key.Marshal()))
+	_, err = f.WriteString(line)
+	return err
 }
 
 func expandPath(path string) string {

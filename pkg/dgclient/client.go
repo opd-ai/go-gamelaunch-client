@@ -1,10 +1,7 @@
 package dgclient
 
 import (
-	"context"
 	"fmt"
-	"io"
-	"net"
 	"sync"
 	"time"
 
@@ -87,53 +84,6 @@ func NewClient(config *ClientConfig) *Client {
 	}
 }
 
-// Connect establishes a connection to the dgamelaunch server
-func (c *Client) Connect(host string, port int, auth AuthMethod) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if c.connected {
-		return fmt.Errorf("already connected")
-	}
-
-	// Build SSH client config
-	sshAuth, err := auth.GetSSHAuthMethod()
-	if err != nil {
-		return &AuthError{Method: auth.Name(), Err: err}
-	}
-
-	config := &ssh.ClientConfig{
-		User:            c.config.SSHConfig.User,
-		Auth:            []ssh.AuthMethod{sshAuth},
-		HostKeyCallback: c.config.SSHConfig.HostKeyCallback,
-		Timeout:         c.config.ConnectTimeout,
-	}
-
-	// Connect with timeout
-	address := fmt.Sprintf("%s:%d", host, port)
-	conn, err := net.DialTimeout("tcp", address, c.config.ConnectTimeout)
-	if err != nil {
-		return &ConnectionError{Host: host, Port: port, Err: err}
-	}
-
-	// Perform SSH handshake
-	sshConn, chans, reqs, err := ssh.NewClientConn(conn, address, config)
-	if err != nil {
-		conn.Close()
-		return &ConnectionError{Host: host, Port: port, Err: err}
-	}
-
-	c.sshClient = ssh.NewClient(sshConn, chans, reqs)
-	c.host = host
-	c.port = port
-	c.connected = true
-
-	// Start keepalive routine
-	go c.keepAlive()
-
-	return nil
-}
-
 // Disconnect closes the connection to the server
 func (c *Client) Disconnect() error {
 	c.mu.Lock()
@@ -185,110 +135,6 @@ func (c *Client) SetView(view View) error {
 	}
 
 	return nil
-}
-
-// Run starts the main game loop
-func (c *Client) Run(ctx context.Context) error {
-	c.mu.Lock()
-	if !c.connected {
-		c.mu.Unlock()
-		return fmt.Errorf("not connected")
-	}
-
-	if c.view == nil {
-		c.mu.Unlock()
-		return ErrViewNotSet
-	}
-
-	// Create new session
-	sshSession, err := c.sshClient.NewSession()
-	if err != nil {
-		c.mu.Unlock()
-		return fmt.Errorf("failed to create session: %w", err)
-	}
-
-	c.session = NewSSHSession(sshSession)
-	c.mu.Unlock()
-
-	// Set up PTY
-	width, height := c.view.GetSize()
-	if err := c.session.RequestPTY(c.config.DefaultTerminal, height, width); err != nil {
-		return fmt.Errorf("failed to request PTY: %w", err)
-	}
-
-	// Set up pipes
-	stdin, err := c.session.StdinPipe()
-	if err != nil {
-		return fmt.Errorf("failed to get stdin pipe: %w", err)
-	}
-
-	stdout, err := c.session.StdoutPipe()
-	if err != nil {
-		return fmt.Errorf("failed to get stdout pipe: %w", err)
-	}
-
-	// Start shell
-	if err := c.session.Shell(); err != nil {
-		return fmt.Errorf("failed to start shell: %w", err)
-	}
-
-	// Create error group for concurrent operations
-	errCh := make(chan error, 3)
-
-	// Handle output
-	go func() {
-		buf := make([]byte, 4096)
-		for {
-			n, err := stdout.Read(buf)
-			if err != nil {
-				if err != io.EOF {
-					errCh <- fmt.Errorf("stdout read error: %w", err)
-				}
-				return
-			}
-
-			if err := c.view.Render(buf[:n]); err != nil {
-				errCh <- fmt.Errorf("render error: %w", err)
-				return
-			}
-		}
-	}()
-
-	// Handle input
-	go func() {
-		for {
-			input, err := c.view.HandleInput()
-			if err != nil {
-				if err != io.EOF {
-					errCh <- fmt.Errorf("input error: %w", err)
-				}
-				return
-			}
-
-			if _, err := stdin.Write(input); err != nil {
-				errCh <- fmt.Errorf("stdin write error: %w", err)
-				return
-			}
-		}
-	}()
-
-	// Handle window resize
-	go func() {
-		// This would typically involve watching for resize events
-		// Implementation depends on the view
-	}()
-
-	// Wait for completion or error
-	select {
-	case <-ctx.Done():
-		c.session.Close()
-		return ctx.Err()
-	case err := <-errCh:
-		c.session.Close()
-		return err
-	case <-c.done:
-		return nil
-	}
 }
 
 // SelectGame sends commands to select a specific game
