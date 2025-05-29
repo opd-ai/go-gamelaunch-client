@@ -22,9 +22,8 @@ const (
 
 // InputHandler processes user input with different modes
 type InputHandler struct {
-	mode    InputMode
-	buffer  []byte
-	echoOff bool
+	mode   InputMode
+	buffer []byte
 }
 
 // NewInputHandler creates a new input handler
@@ -169,20 +168,18 @@ func (r *BufferedReader) Read(p []byte) (n int, err error) {
 	}
 
 	// Wait for new input
-	select {
-	case data, ok := <-r.inputCh:
-		if !ok {
-			r.closed = true
-			return 0, io.EOF
-		}
-
-		n = copy(p, data)
-		if n < len(data) {
-			// Buffer remaining data
-			r.buffer = append(r.buffer, data[n:]...)
-		}
-		return n, nil
+	data, ok := <-r.inputCh
+	if !ok {
+		r.closed = true
+		return 0, io.EOF
 	}
+
+	n = copy(p, data)
+	if n < len(data) {
+		// Buffer remaining data
+		r.buffer = append(r.buffer, data[n:]...)
+	}
+	return n, nil
 }
 
 // InputBuffer provides input buffering with line editing capabilities
