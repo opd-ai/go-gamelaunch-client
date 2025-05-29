@@ -1,6 +1,7 @@
 package webui
 
 import (
+	"context"
 	"sync"
 	"time"
 )
@@ -95,6 +96,39 @@ func (sm *StateManager) PollChanges(clientVersion uint64, timeout time.Duration)
 		return diff, nil
 	case <-time.After(timeout):
 		return nil, nil // Timeout
+	}
+}
+
+// PollChangesWithContext waits for changes with a context
+// It is a context-aware version of PollChanges
+func (sm *StateManager) PollChangesWithContext(pollCtx context.Context, version uint64) (*StateDiff, error) {
+	sm.mu.RLock()
+	currentVersion := sm.version
+	sm.mu.RUnlock()
+
+	// If client is behind, return immediate diff
+	if version < currentVersion {
+		return sm.generateDiffFromVersion(version)
+	}
+
+	// Wait for next change
+	waiterCh := make(chan *StateDiff, 1)
+
+	sm.waitersMu.Lock()
+	sm.waiters[version] = waiterCh
+	sm.waitersMu.Unlock()
+
+	defer func() {
+		sm.waitersMu.Lock()
+		delete(sm.waiters, version)
+		sm.waitersMu.Unlock()
+	}()
+
+	select {
+	case diff := <-waiterCh:
+		return diff, nil
+	case <-pollCtx.Done():
+		return nil, pollCtx.Err() // Context cancelled or deadline exceeded
 	}
 }
 
