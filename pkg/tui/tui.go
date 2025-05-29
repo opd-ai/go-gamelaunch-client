@@ -192,9 +192,17 @@ func (v *TerminalView) handleEvents() {
 		case <-v.quitCh:
 			return
 		case <-ticker.C:
-			// Non-blocking event processing
+			// Non-blocking event processing with proper synchronization
 			for {
+				// Acquire mutex to safely access screen
+				v.mu.Lock()
+				if v.screen == nil {
+					v.mu.Unlock()
+					return // Screen has been closed, exit gracefully
+				}
 				event := v.screen.PollEvent()
+				v.mu.Unlock()
+
 				if event == nil {
 					break // No more events available
 				}

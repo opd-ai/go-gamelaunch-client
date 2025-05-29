@@ -178,7 +178,8 @@ func (h *RPCHandler) handleGamePoll(ctx context.Context, params json.RawMessage)
 	defer cancel()
 
 	stateManager := h.webui.view.stateManager
-	diff, err := stateManager.PollChanges(pollParams.Version, timeout)
+	// FIX: Pass the timeout context instead of raw timeout duration
+	diff, err := stateManager.PollChangesWithContext(pollCtx, pollParams.Version)
 	if err != nil {
 		return nil, err
 	}
