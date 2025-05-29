@@ -3,3 +3,7 @@ fmt:
 
 prompt: fmt
 	code2prompt --output prompt.md .
+
+godoc:
+	godocdown -o pkg/dgclient/README.md pkg/dgclient
+	godocdown -o pkg/tui/README.md pkg/tui
