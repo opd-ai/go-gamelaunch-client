@@ -199,91 +199,81 @@ func (te *TerminalEmulator) processOSCByte(b byte) {
 	// For now, ignore OSC sequences
 }
 
-// executeCSICommand executes CSI commands
-func (te *TerminalEmulator) executeCSICommand(cmd byte) {
-	params := te.parser.params
+// Helper function eliminates redundant parameter extraction
+func (te *TerminalEmulator) getCSIParam(index, defaultValue int) int {
+	if index < len(te.parser.params) && te.parser.params[index] > 0 {
+		return te.parser.params[index]
+	}
+	return defaultValue
+}
 
+// Helper function for bounded parameters with validation
+func (te *TerminalEmulator) getBoundedCSIParam(index, defaultValue, min, max int) int {
+	value := te.getCSIParam(index, defaultValue)
+	if value < min {
+		return min
+	}
+	if value > max {
+		return max
+	}
+	return value
+}
+
+// executeCSICommand executes CSI commands with simplified parameter handling
+func (te *TerminalEmulator) executeCSICommand(cmd byte) {
 	switch cmd {
 	case 'A': // Cursor Up
-		n := 1
-		if len(params) > 0 && params[0] > 0 {
-			n = params[0]
-		}
-		te.cursorY = max(0, te.cursorY-n)
+		count := te.getCSIParam(0, 1)
+		te.cursorY = max(0, te.cursorY-count)
 
 	case 'B': // Cursor Down
-		n := 1
-		if len(params) > 0 && params[0] > 0 {
-			n = params[0]
-		}
-		te.cursorY = min(te.height-1, te.cursorY+n)
+		count := te.getCSIParam(0, 1)
+		te.cursorY = min(te.height-1, te.cursorY+count)
 
 	case 'C': // Cursor Forward
-		n := 1
-		if len(params) > 0 && params[0] > 0 {
-			n = params[0]
-		}
-		te.cursorX = min(te.width-1, te.cursorX+n)
+		count := te.getCSIParam(0, 1)
+		te.cursorX = min(te.width-1, te.cursorX+count)
 
-	case 'D': // Cursor Backward
-		n := 1
-		if len(params) > 0 && params[0] > 0 {
-			n = params[0]
-		}
-		te.cursorX = max(0, te.cursorX-n)
+	case 'D': // Cursor Back
+		count := te.getCSIParam(0, 1)
+		te.cursorX = max(0, te.cursorX-count)
 
-	case 'H', 'f': // Cursor Position
-		row, col := 1, 1
-		if len(params) > 0 && params[0] > 0 {
-			row = params[0]
-		}
-		if len(params) > 1 && params[1] > 0 {
-			col = params[1]
-		}
-		te.cursorY = min(te.height-1, max(0, row-1))
-		te.cursorX = min(te.width-1, max(0, col-1))
+	case 'H', 'f': // Cursor Position - now with consistent bounds checking
+		row := te.getBoundedCSIParam(0, 1, 1, te.height)
+		col := te.getBoundedCSIParam(1, 1, 1, te.width)
+		te.cursorY = row - 1
+		te.cursorX = col - 1
 
-	case 'J': // Erase Display
-		mode := 0
-		if len(params) > 0 {
-			mode = params[0]
-		}
+	case 'J': // Erase in Display
+		mode := te.getCSIParam(0, 0)
 		switch mode {
-		case 0: // Erase from cursor to end of screen
+		case 0:
 			te.eraseFromCursorToEnd()
-		case 1: // Erase from start of screen to cursor
+		case 1:
 			te.eraseFromStartToCursor()
-		case 2: // Erase entire screen
+		case 2:
 			te.eraseScreen()
 		}
 
-	case 'K': // Erase Line
-		mode := 0
-		if len(params) > 0 {
-			mode = params[0]
-		}
+	case 'K': // Erase in Line
+		mode := te.getCSIParam(0, 0)
 		switch mode {
-		case 0: // Erase from cursor to end of line
+		case 0:
 			te.eraseFromCursorToEndOfLine()
-		case 1: // Erase from start of line to cursor
+		case 1:
 			te.eraseFromStartOfLineToCursor()
-		case 2: // Erase entire line
+		case 2:
 			te.eraseEntireLine()
 		}
 
-	case 'm': // Select Graphic Rendition (colors/attributes)
-		te.processGraphicRendition(params)
+	case 'm': // Select Graphic Rendition
+		te.processGraphicRendition(te.parser.params)
 
-	case 'r': // Set Scrolling Region
-		top, bottom := 1, te.height
-		if len(params) > 0 && params[0] > 0 {
-			top = params[0]
-		}
-		if len(params) > 1 && params[1] > 0 {
-			bottom = params[1]
-		}
-		te.scrollTop = max(0, min(te.height-1, top-1))
-		te.scrollBottom = max(0, min(te.height-1, bottom-1))
+	case 'r': // Set Scrolling Region - now with proper validation
+		top := te.getBoundedCSIParam(0, 1, 1, te.height)
+		bottom := te.getBoundedCSIParam(1, te.height, top, te.height)
+		te.scrollTop = top - 1
+		te.scrollBottom = bottom - 1
 	}
 }
 
