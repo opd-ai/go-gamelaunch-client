@@ -321,7 +321,7 @@ func (c *Client) Connect(host string, port int, auth AuthMethod) error {
 	}
 
 	// Connect with timeout
-	address := fmt.Sprintf("%s:%d", host, port)
+	address := net.JoinHostPort(host, fmt.Sprintf("%d", port))
 	conn, err := net.DialTimeout("tcp", address, c.config.ConnectTimeout)
 	if err != nil {
 		return &ConnectionError{Host: host, Port: port, Err: err}
