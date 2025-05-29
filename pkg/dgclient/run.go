@@ -293,6 +293,58 @@ func (c *Client) handleReconnection(lastAuth AuthMethod, originalErr error) erro
 	return fmt.Errorf("failed to reconnect after %d attempts", c.config.MaxReconnectAttempts)
 }
 
+// ConnectWithConn establishes a connection to the dgamelaunch server using an existing net.Conn
+func (c *Client) ConnectWithConn(conn net.Conn, auth AuthMethod) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.connected {
+		// Allow reconnection by first disconnecting
+		if c.sshClient != nil {
+			c.sshClient.Close()
+			c.sshClient = nil
+		}
+		c.connected = false
+	}
+
+	// Build SSH client config
+	sshAuth, err := auth.GetSSHAuthMethod()
+	if err != nil {
+		return &AuthError{Method: auth.Name(), Err: err}
+	}
+
+	config := &ssh.ClientConfig{
+		User:            c.config.SSHConfig.User,
+		Auth:            []ssh.AuthMethod{sshAuth},
+		HostKeyCallback: c.config.SSHConfig.HostKeyCallback,
+		Timeout:         c.config.ConnectTimeout,
+	}
+
+	// Perform SSH handshake on existing connection
+	sshConn, chans, reqs, err := ssh.NewClientConn(conn, conn.RemoteAddr().String(), config)
+	if err != nil {
+		conn.Close()
+		return &ConnectionError{Host: conn.RemoteAddr().String(), Port: 0, Err: err}
+	}
+
+	c.sshClient = ssh.NewClient(sshConn, chans, reqs)
+	// For net.Conn, we'll store the remote address info
+	if tcpAddr, ok := conn.RemoteAddr().(*net.TCPAddr); ok {
+		c.host = tcpAddr.IP.String()
+		c.port = tcpAddr.Port
+	} else {
+		// Fallback for non-TCP connections
+		c.host = conn.RemoteAddr().String()
+		c.port = 0
+	}
+	c.connected = true
+
+	// Start keepalive routine
+	go c.keepAlive()
+
+	return nil
+}
+
 // Connect establishes a connection to the dgamelaunch server
 func (c *Client) Connect(host string, port int, auth AuthMethod) error {
 	c.mu.Lock()
@@ -344,5 +396,3 @@ func (c *Client) Connect(host string, port int, auth AuthMethod) error {
 
 	return nil
 }
-
-// ...existing code...
