@@ -49,7 +49,7 @@ b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAFwAAAAdzc2gtcn
 NhAAAAAwEAAQAAAQEAwJbykjmz1Q7G8aK1K5f3hG4OlJj5EKy1V8sZ9xbJQZbZoFpgW7
 -----END OPENSSH PRIVATE KEY-----`
 
-	err := os.WriteFile(keyPath, []byte(keyContent), 0600)
+	err := os.WriteFile(keyPath, []byte(keyContent), 0o600)
 	if err != nil {
 		t.Fatalf("Failed to create test key file: %v", err)
 	}

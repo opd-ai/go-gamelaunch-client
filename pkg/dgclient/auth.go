@@ -45,7 +45,7 @@ type KeyAuth struct {
 }
 
 // NewKeyAuth creates a new key authentication method
-func NewKeyAuth(keyPath string, passphrase string) AuthMethod {
+func NewKeyAuth(keyPath, passphrase string) AuthMethod {
 	return &KeyAuth{
 		keyPath:    keyPath,
 		passphrase: passphrase,

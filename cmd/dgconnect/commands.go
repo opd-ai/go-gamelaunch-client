@@ -285,7 +285,7 @@ func createInsecureCallback() ssh.HostKeyCallback {
 }
 
 func addToKnownHosts(knownHostsPath, hostname string, key ssh.PublicKey) error {
-	f, err := os.OpenFile(knownHostsPath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
+	f, err := os.OpenFile(knownHostsPath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o600)
 	if err != nil {
 		return err
 	}
