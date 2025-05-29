@@ -23,6 +23,13 @@ func CreateWebView(opts dgclient.ViewOptions) (dgclient.View, error)
 ```
 CreateWebView creates a new WebView that implements dgclient.View
 
+#### func  SaveTilesetConfig
+
+```go
+func SaveTilesetConfig(tileset *TilesetConfig, path string) error
+```
+SaveTilesetConfig saves a tileset configuration to a YAML file
+
 #### type Cell
 
 ```go
@@ -288,6 +295,13 @@ DefaultTilesetConfig returns a basic ASCII tileset configuration
 func LoadTilesetConfig(path string) (*TilesetConfig, error)
 ```
 LoadTilesetConfig loads a tileset from a YAML file
+
+#### func (*TilesetConfig) Clone
+
+```go
+func (tc *TilesetConfig) Clone() *TilesetConfig
+```
+Clone creates a deep copy of the tileset configuration
 
 #### func (*TilesetConfig) GetImageData
 
