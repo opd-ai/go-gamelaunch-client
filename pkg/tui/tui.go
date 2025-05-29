@@ -194,14 +194,17 @@ func (v *TerminalView) handleEvents() {
 		case <-ticker.C:
 			// Non-blocking event processing with proper synchronization
 			for {
-				// Acquire mutex to safely access screen
+				// Check if screen is available without holding mutex during PollEvent
 				v.mu.Lock()
-				if v.screen == nil {
+				screen := v.screen
+				if screen == nil {
 					v.mu.Unlock()
 					return // Screen has been closed, exit gracefully
 				}
-				event := v.screen.PollEvent()
 				v.mu.Unlock()
+
+				// Call PollEvent without holding the mutex to prevent deadlock
+				event := screen.PollEvent()
 
 				if event == nil {
 					break // No more events available
