@@ -63,39 +63,33 @@ func (v *TerminalView) Init() error {
 
 // Render displays the provided data
 func (v *TerminalView) Render(data []byte) error {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-
-	if v.screen == nil {
-		return fmt.Errorf("screen not initialized")
-	}
-
-	// Process data through terminal emulator
+	// Process data without holding locks
 	v.emulator.ProcessData(data)
-
-	// Get the processed screen and render it
 	screenData := v.emulator.GetScreen()
 	cursorX, cursorY := v.emulator.GetCursor()
 
-	// Clear the display
-	v.screen.Clear()
+	// Atomic state check and screen validation
+	v.mu.Lock()
+	screen := v.screen
+	if screen == nil {
+		v.mu.Unlock()
+		return fmt.Errorf("screen not initialized")
+	}
+	v.mu.Unlock()
 
-	// Render each cell
+	// Perform all screen operations without holding mutex
+	screen.Clear()
+
 	for y, row := range screenData {
 		for x, cell := range row {
-			if y < v.height && x < v.width {
-				style := v.cellToTcellStyle(cell.Attr)
-				v.screen.SetContent(x, y, cell.Char, nil, style)
-			}
+			style := v.cellToTcellStyle(cell.Attr)
+			screen.SetContent(x, y, cell.Char, nil, style)
 		}
 	}
 
-	// Set cursor position
-	if cursorY < v.height && cursorX < v.width {
-		v.screen.ShowCursor(cursorX, cursorY)
-	}
+	screen.ShowCursor(cursorX, cursorY)
+	screen.Show()
 
-	v.screen.Show()
 	return nil
 }
 
@@ -159,10 +153,6 @@ func (v *TerminalView) SetSize(width, height int) error {
 func (v *TerminalView) GetSize() (width, height int) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
-
-	if v.screen != nil {
-		return v.screen.Size()
-	}
 	return v.width, v.height
 }
 
@@ -191,7 +181,7 @@ func (v *TerminalView) Close() error {
 	return nil
 }
 
-// handleEvents processes terminal events
+// Batch resize operations and minimize lock duration
 func (v *TerminalView) handleEvents() {
 	for {
 		select {
@@ -204,16 +194,20 @@ func (v *TerminalView) handleEvents() {
 			}
 
 			switch ev := event.(type) {
-			case *tcell.EventKey:
-				v.handleKeyEvent(ev)
 			case *tcell.EventResize:
+				// Capture new dimensions
+				newWidth, newHeight := ev.Size()
+
+				// Atomic update of internal state
 				v.mu.Lock()
-				v.width, v.height = ev.Size()
+				v.width, v.height = newWidth, newHeight
 				if v.emulator != nil {
-					v.emulator.Resize(v.width, v.height)
+					v.emulator.Resize(newWidth, newHeight)
 				}
-				v.screen.Sync()
 				v.mu.Unlock()
+
+				// Screen sync without holding mutex
+				v.screen.Sync()
 			}
 		}
 	}
