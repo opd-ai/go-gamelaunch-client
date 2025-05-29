@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/opd-ai/go-gamelaunch-client/pkg/dgclient"
@@ -181,35 +182,48 @@ func (v *TerminalView) Close() error {
 	return nil
 }
 
-// Batch resize operations and minimize lock duration
+// handleEvents processes terminal events with non-blocking polling
 func (v *TerminalView) handleEvents() {
+	ticker := time.NewTicker(16 * time.Millisecond) // ~60fps for responsive UI
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-v.quitCh:
 			return
-		default:
-			event := v.screen.PollEvent()
-			if event == nil {
-				continue
-			}
-
-			switch ev := event.(type) {
-			case *tcell.EventResize:
-				// Capture new dimensions
-				newWidth, newHeight := ev.Size()
-
-				// Atomic update of internal state
-				v.mu.Lock()
-				v.width, v.height = newWidth, newHeight
-				if v.emulator != nil {
-					v.emulator.Resize(newWidth, newHeight)
+		case <-ticker.C:
+			// Non-blocking event processing
+			for {
+				event := v.screen.PollEvent()
+				if event == nil {
+					break // No more events available
 				}
-				v.mu.Unlock()
 
-				// Screen sync without holding mutex
-				v.screen.Sync()
+				v.processEvent(event) // Extracted for testability
 			}
 		}
+	}
+}
+
+// processEvent handles a single event - extracted for testing
+func (v *TerminalView) processEvent(event tcell.Event) {
+	switch ev := event.(type) {
+	case *tcell.EventKey:
+		v.handleKeyEvent(ev) // Now actually called
+	case *tcell.EventResize:
+		// Capture new dimensions
+		newWidth, newHeight := ev.Size()
+
+		// Atomic update of internal state
+		v.mu.Lock()
+		v.width, v.height = newWidth, newHeight
+		if v.emulator != nil {
+			v.emulator.Resize(newWidth, newHeight)
+		}
+		v.mu.Unlock()
+
+		// Screen sync without holding mutex
+		v.screen.Sync()
 	}
 }
 
