@@ -222,37 +222,44 @@ func (v *WebView) processTerminalData(data []byte) {
 }
 
 func (v *WebView) processEscapeSequence(b byte) bool {
+	// Check for buffer overflow protection FIRST before appending
+	if len(v.escapeBuffer) >= 32 {
+		// Reset escape sequence state and return true to exit
+		v.escapeBuffer = v.escapeBuffer[:0]
+		v.inEscapeSeq = false
+		return true
+	}
+
+	// Add the byte to the buffer after safety check
+	v.escapeBuffer = append(v.escapeBuffer, b)
 	escSeq := string(v.escapeBuffer)
 
 	// Handle CSI sequences (ESC[...)
 	if len(escSeq) >= 2 && escSeq[1] == '[' {
 		// Check if sequence is complete
 		if (b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z') || b == 'm' || b == 'H' || b == 'J' || b == 'K' {
+			// Sequence is complete, process it
 			v.handleCSISequence(escSeq)
+			v.escapeBuffer = v.escapeBuffer[:0]
+			v.inEscapeSeq = false
 			return true
 		}
+		// Continue building sequence if not complete
+		return false
 	}
 
 	// Handle other escape sequences
 	if len(escSeq) >= 2 {
 		switch escSeq[1] {
-		case 'c': // Reset
-			v.resetTerminalState()
-			return true
-		case 'D': // Scroll down
-			v.scrollUp()
-			return true
-		case 'M': // Scroll up
-			v.scrollDown()
+		default:
+			// Unknown sequence, terminate
+			v.escapeBuffer = v.escapeBuffer[:0]
+			v.inEscapeSeq = false
 			return true
 		}
 	}
 
-	// If sequence is getting too long, assume it's complete
-	if len(escSeq) > 32 {
-		return true
-	}
-
+	// Continue building sequence
 	return false
 }
 

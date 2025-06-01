@@ -167,14 +167,13 @@
    */
   function checkBrowserCompatibility() {
     const features = {
-      // Fixed: Better ES modules detection
+      // Fixed: Proper ES modules detection using noModule attribute
       esModules: (function() {
         try {
-          // Check for dynamic import support
-          return (
-            typeof window.import === "undefined" &&
-            "noModule" in document.createElement("script")
-          );
+          // Use the standard noModule attribute detection method
+          // Browsers that support ES modules also support the noModule attribute
+          const script = document.createElement("script");
+          return "noModule" in script;
         } catch (e) {
           return false;
         }

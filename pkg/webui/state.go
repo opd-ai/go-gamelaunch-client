@@ -70,7 +70,7 @@ func (sm *StateManager) GetCurrentVersion() uint64 {
 	return sm.version
 }
 
-// FIXED: Use unique waiter keys to prevent race conditions between concurrent clients
+// PollChanges waits for changes since the given client version
 func (sm *StateManager) PollChanges(clientVersion uint64, timeout time.Duration) (*StateDiff, error) {
 	sm.mu.RLock()
 	currentVersion := sm.version
@@ -84,17 +84,16 @@ func (sm *StateManager) PollChanges(clientVersion uint64, timeout time.Duration)
 	// Wait for next change
 	waiterCh := make(chan *StateDiff, 1)
 
-	// Fix: Generate unique key to prevent concurrent client interference
-
+	// Generate unique key combining version and timestamp to prevent collision
 	uniqueKey := fmt.Sprintf("%d-%d", clientVersion, time.Now().UnixNano())
 
 	sm.waitersMu.Lock()
-	sm.waiters[uniqueKey] = waiterCh // Use unique key instead of clientVersion
+	sm.waiters[uniqueKey] = waiterCh
 	sm.waitersMu.Unlock()
 
 	defer func() {
 		sm.waitersMu.Lock()
-		delete(sm.waiters, uniqueKey) // Clean up using unique key
+		delete(sm.waiters, uniqueKey)
 		sm.waitersMu.Unlock()
 	}()
 
@@ -111,7 +110,7 @@ func (sm *StateManager) notifyWaiters(diff *StateDiff) {
 	defer sm.waitersMu.Unlock()
 
 	for key, waiterCh := range sm.waiters {
-		// Fix: Parse version from unique key for comparison
+		// Parse version from unique key for comparison
 		parts := strings.Split(key, "-")
 		if len(parts) >= 1 {
 			if version, err := strconv.ParseUint(parts[0], 10, 64); err == nil {
