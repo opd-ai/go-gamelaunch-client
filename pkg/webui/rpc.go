@@ -161,12 +161,16 @@ func (h *RPCHandler) handleGamePoll(ctx context.Context, params json.RawMessage)
 		return map[string]interface{}{
 			"changes": nil,
 			"version": 0,
+			"timeout": true,
 		}, nil
 	}
 
 	timeout := time.Duration(pollParams.Timeout) * time.Millisecond
-	if timeout <= 0 || timeout > 30*time.Second {
-		timeout = 30 * time.Second
+	if timeout <= 0 {
+		timeout = 25 * time.Second // Default to 25 seconds
+	}
+	if timeout > 30*time.Second {
+		timeout = 30 * time.Second // Cap at 30 seconds
 	}
 
 	// Create context with timeout
@@ -174,9 +178,26 @@ func (h *RPCHandler) handleGamePoll(ctx context.Context, params json.RawMessage)
 	defer cancel()
 
 	stateManager := h.webui.view.stateManager
-	// FIX: Pass the timeout context instead of raw timeout duration
 	diff, err := stateManager.PollChangesWithContext(pollCtx, pollParams.Version)
+
+	// Handle context cancellation gracefully
 	if err != nil {
+		if ctx.Err() == context.Canceled {
+			// Client disconnected
+			return map[string]interface{}{
+				"changes": nil,
+				"version": stateManager.GetCurrentVersion(),
+				"timeout": true,
+			}, nil
+		}
+		if ctx.Err() == context.DeadlineExceeded {
+			// Timeout reached
+			return map[string]interface{}{
+				"changes": nil,
+				"version": stateManager.GetCurrentVersion(),
+				"timeout": true,
+			}, nil
+		}
 		return nil, err
 	}
 

@@ -74,21 +74,25 @@ class GameClient {
         };
         
         try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 35000); // 35 second timeout
+            
             const response = await fetch('/rpc', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify(request)
+                body: JSON.stringify(request),
+                signal: controller.signal
             });
+            
+            clearTimeout(timeoutId);
             
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
             
-            // Debug: Log raw response text
             const responseText = await response.text();
-            console.log(`RPC response for ${method}:`, responseText);
             
             let result;
             try {
@@ -105,6 +109,9 @@ class GameClient {
             
             return result.result;
         } catch (error) {
+            if (error.name === 'AbortError') {
+                throw new Error(`Request timeout for ${method}`);
+            }
             console.error(`RPC call failed for ${method}:`, error);
             throw error;
         }
@@ -170,27 +177,53 @@ class GameClient {
         if (this.polling) return;
         this.polling = true;
         
+        let consecutiveErrors = 0;
+        const maxConsecutiveErrors = 5;
+        
         const poll = async () => {
             if (!this.polling) return;
             
             try {
                 const version = this.gameState ? this.gameState.version : 0;
+                console.log(`Polling for changes since version ${version}`);
+                
                 const result = await this.rpcCall('game.poll', {
                     version: version,
-                    timeout: this.pollTimeout
+                    timeout: 25000
                 });
                 
+                consecutiveErrors = 0; // Reset error counter on success
+                
                 if (result.changes && !result.timeout) {
+                    console.log(`Received ${result.changes.length} changes, version ${result.version}`);
                     this.applyChanges(result.changes);
                     this.render();
+                } else if (result.timeout) {
+                    console.log('Poll timeout - no changes');
                 }
                 
-                // Continue polling
                 setTimeout(poll, 100);
             } catch (error) {
-                console.error('Polling error:', error);
-                // Retry after delay
-                setTimeout(poll, 5000);
+                consecutiveErrors++;
+                console.error(`Polling error (${consecutiveErrors}/${maxConsecutiveErrors}):`, error);
+                
+                if (consecutiveErrors >= maxConsecutiveErrors) {
+                    console.error('Too many consecutive polling errors, stopping polling');
+                    this.polling = false;
+                    this.showError('Connection lost - too many errors');
+                    return;
+                }
+                
+                // Determine retry delay based on error type
+                let retryDelay = 5000; // Default 5 seconds
+                
+                if (error.message.includes('timeout')) {
+                    retryDelay = 100; // Quick retry for timeouts
+                } else if (error.message.includes('NetworkError') || error.message.includes('Failed to fetch')) {
+                    retryDelay = Math.min(5000 * consecutiveErrors, 30000); // Exponential backoff up to 30s
+                }
+                
+                setTimeout(poll, retryDelay);
             }
         };
         
