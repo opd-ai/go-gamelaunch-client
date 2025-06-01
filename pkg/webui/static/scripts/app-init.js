@@ -162,87 +162,10 @@
   }
 
   /**
-   * Checks browser compatibility for required features
-   * @returns {Object} Compatibility check results
-   */
-  function checkBrowserCompatibility() {
-    const features = {
-      // Fixed: Proper ES modules detection using noModule attribute
-      esModules: (function() {
-        try {
-          // Use the standard noModule attribute detection method
-          // Browsers that support ES modules also support the noModule attribute
-          const script = document.createElement("script");
-          return "noModule" in script;
-        } catch (e) {
-          return false;
-        }
-      })(),
-      fetch: typeof fetch !== "undefined",
-      promises: typeof Promise !== "undefined",
-      localStorage: (function() {
-        try {
-          return typeof localStorage !== "undefined" && localStorage !== null;
-        } catch (e) {
-          return false;
-        }
-      })(),
-      websockets: typeof WebSocket !== "undefined",
-      canvas: !!document.createElement("canvas").getContext,
-      webgl: (function() {
-        try {
-          const canvas = document.createElement("canvas");
-          return !!(
-            canvas.getContext("webgl") ||
-            canvas.getContext("experimental-webgl")
-          );
-        } catch (e) {
-          return false;
-        }
-      })()
-    };
-
-    const required = ["fetch", "promises", "canvas"];
-    const missing = required.filter(feature => !features[feature]);
-
-    return {
-      features: features,
-      compatible: missing.length === 0,
-      missing: missing,
-      esModulesSupported: features.esModules
-    };
-  }
-
-  /**
    * Initializes the application
    */
   function initializeApplication() {
     console.log("[AppInit] Starting application initialization");
-
-    // Check browser compatibility
-    const compatibility = checkBrowserCompatibility();
-    console.log("[AppInit] Browser compatibility check:", compatibility);
-
-    if (!compatibility.compatible) {
-      const missingFeatures = compatibility.missing.join(", ");
-      const errorMessage =
-        `Your browser is missing required features: ${missingFeatures}. ` +
-        "Please update your browser or try a different one.";
-
-      if (window.DGameLaunchErrorHandler) {
-        window.DGameLaunchErrorHandler.showError(errorMessage);
-      } else {
-        alert(`Compatibility Error: ${errorMessage}`);
-      }
-      return;
-    }
-
-    // Warning for ES modules but don't block
-    if (!compatibility.esModulesSupported) {
-      console.warn(
-        "[AppInit] ES modules may not be fully supported, but attempting to load anyway"
-      );
-    }
 
     // Check network connectivity
     if ("onLine" in navigator && !navigator.onLine) {
@@ -257,7 +180,7 @@
       return;
     }
 
-    // Load main module
+    // Load main module directly - let the browser handle compatibility naturally
     loadMainModule();
   }
 
