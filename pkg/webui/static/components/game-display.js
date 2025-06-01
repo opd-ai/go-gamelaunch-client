@@ -1094,17 +1094,33 @@ class GameDisplay {
    * @private
    */
   _mapConnectionState(clientState) {
+    // Import ConnectionState and StatusState enums if not already available
     const stateMapping = {
-      disconnected: StatusState.DISCONNECTED,
-      connecting: StatusState.CONNECTING,
-      connected: StatusState.CONNECTED,
-      authenticated: StatusState.AUTHENTICATED,
-      playing: StatusState.PLAYING,
-      error: StatusState.ERROR,
-      reconnecting: StatusState.RECONNECTING
+      [ConnectionState.DISCONNECTED]: "disconnected",
+      [ConnectionState.CONNECTING]: "connecting",
+      [ConnectionState.CONNECTED]: "connected",
+      [ConnectionState.AUTHENTICATED]: "authenticated",
+      [ConnectionState.PLAYING]: "playing",
+      [ConnectionState.ERROR]: "error",
+      [ConnectionState.RECONNECTING]: "reconnecting"
     };
 
-    return stateMapping[clientState] || StatusState.DISCONNECTED;
+    const mappedState = stateMapping[clientState];
+
+    if (!mappedState) {
+      this.logger.warn(
+        "_mapConnectionState",
+        `Unknown client state: ${clientState}, defaulting to error`
+      );
+      return "error";
+    }
+
+    this.logger.debug(
+      "_mapConnectionState",
+      `Mapped client state ${clientState} to display state ${mappedState}`
+    );
+
+    return mappedState;
   }
 
   /**
