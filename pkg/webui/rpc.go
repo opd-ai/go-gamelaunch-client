@@ -179,7 +179,6 @@ func (h *RPCHandler) handleGamePoll(ctx context.Context, params json.RawMessage)
 
 	stateManager := h.webui.view.stateManager
 	diff, err := stateManager.PollChangesWithContext(pollCtx, pollParams.Version)
-
 	// Handle context cancellation gracefully
 	if err != nil {
 		if ctx.Err() == context.Canceled {

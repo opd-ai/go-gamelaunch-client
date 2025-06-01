@@ -6,12 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"image/png"
+	"log"
 	"net/http"
 	"time"
 
 	_ "embed"
-
-	"log"
 
 	"github.com/opd-ai/go-gamelaunch-client/pkg/dgclient"
 )
@@ -99,7 +98,7 @@ func (w *WebUI) setupRoutes() {
 	if w.options.StaticPath != "" {
 		// Serve from filesystem
 		w.mux.Handle("/", http.FileServer(http.Dir(w.options.StaticPath)))
-		//w.mux.Handle("/", http.StripPrefix("/static/", http.FileServer(http.Dir(w.options.StaticPath))))
+		// w.mux.Handle("/", http.StripPrefix("/static/", http.FileServer(http.Dir(w.options.StaticPath))))
 	} else {
 		// Serve embedded files
 		w.mux.HandleFunc("/", func(rw http.ResponseWriter, r *http.Request) {
