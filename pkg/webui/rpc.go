@@ -5,10 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"time"
+
+	"github.com/gorilla/rpc/v2"
+	"github.com/gorilla/rpc/v2/json2"
 )
 
-// RPCRequest represents a JSON-RPC 2.0 request
+// Legacy types preserved for compatibility
 type RPCRequest struct {
 	JSONRPC string          `json:"jsonrpc"`
 	Method  string          `json:"method"`
@@ -16,7 +20,6 @@ type RPCRequest struct {
 	ID      interface{}     `json:"id"`
 }
 
-// RPCResponse represents a JSON-RPC 2.0 response
 type RPCResponse struct {
 	JSONRPC string      `json:"jsonrpc"`
 	Result  interface{} `json:"result,omitempty"`
@@ -24,7 +27,6 @@ type RPCResponse struct {
 	ID      interface{} `json:"id"`
 }
 
-// RPCError represents a JSON-RPC 2.0 error
 type RPCError struct {
 	Code    int         `json:"code"`
 	Message string      `json:"message"`
@@ -40,17 +42,68 @@ const (
 	InternalError  = -32603
 )
 
-// RPCHandler handles JSON-RPC method calls
+// RPCHandler maintains compatibility with existing code
 type RPCHandler struct {
-	webui *WebUI
+	webui     *WebUI
+	rpcServer *rpc.Server
 }
 
-// NewRPCHandler creates a new RPC handler
+// Service structs for Gorilla RPC
+type GameService struct {
+	handler *RPCHandler
+}
+
+type TilesetService struct {
+	handler *RPCHandler
+}
+
+type SessionService struct {
+	handler *RPCHandler
+}
+
+// Parameter types for RPC methods
+type GamePollParams struct {
+	Version uint64 `json:"version"`
+	Timeout int    `json:"timeout,omitempty"`
+}
+
+type GameInputParams struct {
+	Events []InputEvent `json:"events"`
+}
+
+type InputEvent struct {
+	Type      string `json:"type"`
+	Key       string `json:"key,omitempty"`
+	KeyCode   int    `json:"keyCode,omitempty"`
+	Data      string `json:"data,omitempty"`
+	Timestamp int64  `json:"timestamp"`
+}
+
+type Empty struct{}
+
+// NewRPCHandler creates a new RPC handler with Gorilla RPC integration
 func NewRPCHandler(webui *WebUI) *RPCHandler {
-	return &RPCHandler{webui: webui}
+	handler := &RPCHandler{webui: webui}
+
+	// Create Gorilla RPC server
+	rpcServer := rpc.NewServer()
+	rpcServer.RegisterCodec(json2.NewCodec(), "application/json")
+	rpcServer.RegisterCodec(json2.NewCodec(), "application/json; charset=UTF-8")
+
+	// Register services
+	gameService := &GameService{handler: handler}
+	tilesetService := &TilesetService{handler: handler}
+	sessionService := &SessionService{handler: handler}
+
+	rpcServer.RegisterService(gameService, "game")
+	rpcServer.RegisterService(tilesetService, "tileset")
+	rpcServer.RegisterService(sessionService, "session")
+
+	handler.rpcServer = rpcServer
+	return handler
 }
 
-// HandleRequest processes a JSON-RPC request
+// HandleRequest preserves the original signature for compatibility
 func (h *RPCHandler) HandleRequest(ctx context.Context, req *RPCRequest) *RPCResponse {
 	log.Printf("[RPC] Handling request: method=%s, id=%v", req.Method, req.ID)
 
@@ -135,7 +188,75 @@ func (h *RPCHandler) HandleRequest(ctx context.Context, req *RPCRequest) *RPCRes
 	return response
 }
 
-// handleTilesetFetch returns current tileset configuration
+// GetRPCServer returns the underlying Gorilla RPC server for HTTP integration
+func (h *RPCHandler) GetRPCServer() *rpc.Server {
+	return h.rpcServer
+}
+
+// Gorilla RPC service methods - these delegate to existing handler methods
+
+// Game service methods
+func (s *GameService) GetState(r *http.Request, args *Empty, reply *map[string]interface{}) error {
+	result, err := s.handler.handleGameGetState(r.Context(), nil)
+	if err != nil {
+		return err
+	}
+	*reply = result.(map[string]interface{})
+	return nil
+}
+
+func (s *GameService) Poll(r *http.Request, args *GamePollParams, reply *map[string]interface{}) error {
+	paramsJSON, _ := json.Marshal(args)
+	result, err := s.handler.handleGamePoll(r.Context(), paramsJSON)
+	if err != nil {
+		return err
+	}
+	*reply = result.(map[string]interface{})
+	return nil
+}
+
+func (s *GameService) SendInput(r *http.Request, args *GameInputParams, reply *map[string]interface{}) error {
+	paramsJSON, _ := json.Marshal(args)
+	result, err := s.handler.handleGameSendInput(r.Context(), paramsJSON)
+	if err != nil {
+		return err
+	}
+	*reply = result.(map[string]interface{})
+	return nil
+}
+
+// Tileset service methods
+func (s *TilesetService) Fetch(r *http.Request, args *Empty, reply *map[string]interface{}) error {
+	result, err := s.handler.handleTilesetFetch(r.Context(), nil)
+	if err != nil {
+		return err
+	}
+	*reply = result.(map[string]interface{})
+	return nil
+}
+
+func (s *TilesetService) Update(r *http.Request, args *json.RawMessage, reply *map[string]interface{}) error {
+	result, err := s.handler.handleTilesetUpdate(r.Context(), *args)
+	if err != nil {
+		return err
+	}
+	if result != nil {
+		*reply = result.(map[string]interface{})
+	}
+	return nil
+}
+
+// Session service methods
+func (s *SessionService) Info(r *http.Request, args *Empty, reply *map[string]interface{}) error {
+	result, err := s.handler.handleSessionInfo(r.Context(), nil)
+	if err != nil {
+		return err
+	}
+	*reply = result.(map[string]interface{})
+	return nil
+}
+
+// Original handler methods preserved with all logging
 func (h *RPCHandler) handleTilesetFetch(ctx context.Context, params json.RawMessage) (interface{}, error) {
 	log.Printf("[RPC] handleTilesetFetch: Starting tileset fetch")
 
@@ -164,7 +285,6 @@ func (h *RPCHandler) handleTilesetFetch(ctx context.Context, params json.RawMess
 	return result, nil
 }
 
-// handleGameGetState returns current game state
 func (h *RPCHandler) handleGameGetState(ctx context.Context, params json.RawMessage) (interface{}, error) {
 	log.Printf("[RPC] handleGameGetState: Starting game state retrieval")
 
@@ -186,13 +306,6 @@ func (h *RPCHandler) handleGameGetState(ctx context.Context, params json.RawMess
 	}, nil
 }
 
-// GamePollParams represents parameters for game.poll method
-type GamePollParams struct {
-	Version uint64 `json:"version"`
-	Timeout int    `json:"timeout,omitempty"`
-}
-
-// handleGamePoll implements long-polling for state changes
 func (h *RPCHandler) handleGamePoll(ctx context.Context, params json.RawMessage) (interface{}, error) {
 	log.Printf("[RPC] handleGamePoll: Starting poll request processing")
 
@@ -232,7 +345,6 @@ func (h *RPCHandler) handleGamePoll(ctx context.Context, params json.RawMessage)
 	stateManager := h.webui.view.stateManager
 	log.Printf("[RPC] handleGamePoll: Starting PollChangesWithContext for version %d", pollParams.Version)
 	diff, err := stateManager.PollChangesWithContext(pollCtx, pollParams.Version)
-
 	// Handle context cancellation gracefully
 	if err != nil {
 		if ctx.Err() == context.Canceled {
@@ -276,21 +388,6 @@ func (h *RPCHandler) handleGamePoll(ctx context.Context, params json.RawMessage)
 	}, nil
 }
 
-// GameInputParams represents parameters for game.sendInput method
-type GameInputParams struct {
-	Events []InputEvent `json:"events"`
-}
-
-// InputEvent represents a user input event
-type InputEvent struct {
-	Type      string `json:"type"`
-	Key       string `json:"key,omitempty"`
-	KeyCode   int    `json:"keyCode,omitempty"`
-	Data      string `json:"data,omitempty"`
-	Timestamp int64  `json:"timestamp"`
-}
-
-// handleGameSendInput processes input from the client
 func (h *RPCHandler) handleGameSendInput(ctx context.Context, params json.RawMessage) (interface{}, error) {
 	log.Printf("[RPC] handleGameSendInput: Starting input processing")
 
@@ -332,7 +429,6 @@ func (h *RPCHandler) handleGameSendInput(ctx context.Context, params json.RawMes
 	}, nil
 }
 
-// convertInputEvent converts web input event to terminal input
 func (h *RPCHandler) convertInputEvent(event InputEvent) []byte {
 	log.Printf("[RPC] convertInputEvent: Processing input event - type=%s, key=%s, data=%q",
 		event.Type, event.Key, event.Data)
@@ -358,7 +454,6 @@ func (h *RPCHandler) convertInputEvent(event InputEvent) []byte {
 	}
 }
 
-// convertKeyEvent converts keyboard events to terminal sequences
 func (h *RPCHandler) convertKeyEvent(event InputEvent) []byte {
 	log.Printf("[RPC] convertKeyEvent: Starting conversion for key=%s", event.Key)
 
@@ -416,13 +511,11 @@ func (h *RPCHandler) convertKeyEvent(event InputEvent) []byte {
 	}
 }
 
-// handleTilesetUpdate updates the tileset configuration
 func (h *RPCHandler) handleTilesetUpdate(ctx context.Context, params json.RawMessage) (interface{}, error) {
 	// For now, return not implemented
 	return nil, fmt.Errorf("tileset updates not yet implemented")
 }
 
-// handleSessionInfo returns session information
 func (h *RPCHandler) handleSessionInfo(ctx context.Context, params json.RawMessage) (interface{}, error) {
 	return map[string]interface{}{
 		"connected":      h.webui.view != nil,
@@ -431,7 +524,6 @@ func (h *RPCHandler) handleSessionInfo(ctx context.Context, params json.RawMessa
 	}, nil
 }
 
-// makeError creates an RPC error
 func (h *RPCHandler) makeError(code int, message string) *RPCError {
 	return &RPCError{
 		Code:    code,

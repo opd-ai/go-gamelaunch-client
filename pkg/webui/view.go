@@ -2,6 +2,8 @@ package webui
 
 import (
 	"io"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -60,6 +62,18 @@ type WebView struct {
 	updateNotify chan struct{}
 	stateManager *StateManager
 	tileset      *TilesetConfig
+
+	// ANSI parsing state - simplified with library integration
+	currentFgColor string
+	currentBgColor string
+	currentBold    bool
+	currentInverse bool
+	currentBlink   bool
+	escapeBuffer   []byte
+	inEscapeSeq    bool
+
+	// Color converter using fatih/color library
+	colorConverter *ColorConverter
 }
 
 // NewWebView creates a new web-based view
@@ -80,6 +94,18 @@ func NewWebView(opts dgclient.ViewOptions) (*WebView, error) {
 		inputChan:    make(chan []byte, 100),
 		updateNotify: make(chan struct{}, 10),
 		stateManager: NewStateManager(),
+
+		// Initialize color state
+		currentFgColor: "#FFFFFF",
+		currentBgColor: "#000000",
+		currentBold:    false,
+		currentInverse: false,
+		currentBlink:   false,
+		escapeBuffer:   make([]byte, 0, 32),
+		inEscapeSeq:    false,
+
+		// Initialize color converter
+		colorConverter: NewColorConverter(),
 	}
 
 	view.initBuffer()
@@ -98,16 +124,23 @@ func (v *WebView) Init() error {
 // initBuffer initializes the screen buffer
 func (v *WebView) initBuffer() {
 	v.buffer = make([][]Cell, v.height)
-	for y := range v.buffer {
+	for y := 0; y < v.height; y++ {
 		v.buffer[y] = make([]Cell, v.width)
-		for x := range v.buffer[y] {
+		for x := 0; x < v.width; x++ {
 			v.buffer[y][x] = Cell{
 				Char:    ' ',
-				FgColor: "#FFFFFF",
-				BgColor: "#000000",
+				FgColor: v.currentFgColor,
+				BgColor: v.currentBgColor,
+				Bold:    false,
+				Inverse: false,
+				Blink:   false,
+				Changed: true,
 			}
 		}
 	}
+
+	v.cursorX = 0
+	v.cursorY = 0
 }
 
 // Render processes terminal data and updates the screen buffer
@@ -133,9 +166,24 @@ func (v *WebView) Render(data []byte) error {
 
 // processTerminalData parses terminal escape sequences and updates buffer
 func (v *WebView) processTerminalData(data []byte) {
-	// Simple implementation - in practice would need full ANSI parser
-	for _, b := range data {
+	i := 0
+	for i < len(data) {
+		b := data[i]
+
+		if v.inEscapeSeq {
+			v.escapeBuffer = append(v.escapeBuffer, b)
+			if v.processEscapeSequence(b) {
+				v.inEscapeSeq = false
+				v.escapeBuffer = v.escapeBuffer[:0]
+			}
+			i++
+			continue
+		}
+
 		switch b {
+		case '\x1b': // ESC
+			v.inEscapeSeq = true
+			v.escapeBuffer = append(v.escapeBuffer[:0], b)
 		case '\n':
 			v.cursorY++
 			v.cursorX = 0
@@ -149,52 +197,417 @@ func (v *WebView) processTerminalData(data []byte) {
 			if v.cursorX > 0 {
 				v.cursorX--
 			}
-		default:
-			if b >= 32 && b < 127 { // Printable ASCII
-				if v.cursorX < v.width && v.cursorY < v.height {
-					cell := &v.buffer[v.cursorY][v.cursorX]
-					cell.Char = rune(b)
-					cell.Changed = true
-
-					// Apply tileset mapping if available
-					if v.tileset != nil {
-						if mapping := v.tileset.GetMapping(rune(b)); mapping != nil {
-							cell.TileX = mapping.X
-							cell.TileY = mapping.Y
-							if mapping.FgColor != "" {
-								cell.FgColor = mapping.FgColor
-							}
-							if mapping.BgColor != "" {
-								cell.BgColor = mapping.BgColor
-							}
-						}
-					}
-				}
-				v.cursorX++
-				if v.cursorX >= v.width {
-					v.cursorX = 0
-					v.cursorY++
-					if v.cursorY >= v.height {
-						v.scrollUp()
-						v.cursorY = v.height - 1
-					}
+		case '\t':
+			// Tab to next 8-character boundary
+			v.cursorX = ((v.cursorX / 8) + 1) * 8
+			if v.cursorX >= v.width {
+				v.cursorX = 0
+				v.cursorY++
+				if v.cursorY >= v.height {
+					v.scrollUp()
+					v.cursorY = v.height - 1
 				}
 			}
+		default:
+			if b >= 32 && b < 127 { // Printable ASCII
+				v.writeCharacter(rune(b))
+			} else if b >= 128 { // UTF-8 continuation or start
+				// For simplicity, treat as printable character
+				// In production, you'd want proper UTF-8 handling
+				v.writeCharacter(rune(b))
+			}
+		}
+		i++
+	}
+}
+
+func (v *WebView) processEscapeSequence(b byte) bool {
+	escSeq := string(v.escapeBuffer)
+
+	// Handle CSI sequences (ESC[...)
+	if len(escSeq) >= 2 && escSeq[1] == '[' {
+		// Check if sequence is complete
+		if (b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z') || b == 'm' || b == 'H' || b == 'J' || b == 'K' {
+			v.handleCSISequence(escSeq)
+			return true
+		}
+	}
+
+	// Handle other escape sequences
+	if len(escSeq) >= 2 {
+		switch escSeq[1] {
+		case 'c': // Reset
+			v.resetTerminalState()
+			return true
+		case 'D': // Scroll down
+			v.scrollUp()
+			return true
+		case 'M': // Scroll up
+			v.scrollDown()
+			return true
+		}
+	}
+
+	// If sequence is getting too long, assume it's complete
+	if len(escSeq) > 32 {
+		return true
+	}
+
+	return false
+}
+
+func (v *WebView) handleCSISequence(seq string) {
+	if strings.HasSuffix(seq, "m") {
+		// SGR (Select Graphic Rendition) - color and attributes
+		v.handleSGRSequence(seq)
+	} else if strings.HasSuffix(seq, "H") || strings.HasSuffix(seq, "f") {
+		// Cursor position
+		v.handleCursorPosition(seq)
+	} else if strings.HasSuffix(seq, "J") {
+		// Erase display
+		v.handleEraseDisplay(seq)
+	} else if strings.HasSuffix(seq, "K") {
+		// Erase line
+		v.handleEraseLine(seq)
+	} else if strings.HasSuffix(seq, "A") {
+		// Cursor up
+		v.handleCursorMove(seq, 0, -1)
+	} else if strings.HasSuffix(seq, "B") {
+		// Cursor down
+		v.handleCursorMove(seq, 0, 1)
+	} else if strings.HasSuffix(seq, "C") {
+		// Cursor right
+		v.handleCursorMove(seq, 1, 0)
+	} else if strings.HasSuffix(seq, "D") {
+		// Cursor left
+		v.handleCursorMove(seq, -1, 0)
+	}
+}
+
+func (v *WebView) handleSGRSequence(seq string) {
+	// Parse SGR (Select Graphic Rendition) parameters
+	paramStr := seq[2 : len(seq)-1] // Remove ESC[ and m
+	if paramStr == "" {
+		paramStr = "0" // Default reset
+	}
+
+	params := strings.Split(paramStr, ";")
+
+	// Use library-based color processing - IMPROVEMENT: Eliminates custom color parsing
+	fgColor, bgColor, bold, inverse, blink := v.colorConverter.ProcessSGRParams(params)
+
+	// Update current state
+	v.currentFgColor = fgColor
+	v.currentBgColor = bgColor
+	v.currentBold = bold
+	v.currentInverse = inverse
+	v.currentBlink = blink
+}
+
+func (v *WebView) handleCursorPosition(seq string) {
+	paramStr := seq[2 : len(seq)-1] // Remove ESC[ and H/f
+	if paramStr == "" {
+		v.cursorX = 0
+		v.cursorY = 0
+		return
+	}
+
+	params := strings.Split(paramStr, ";")
+	if len(params) >= 2 {
+		row, _ := strconv.Atoi(params[0])
+		col, _ := strconv.Atoi(params[1])
+		// ANSI coordinates are 1-based
+		v.cursorY = row - 1
+		v.cursorX = col - 1
+	} else if len(params) == 1 {
+		row, _ := strconv.Atoi(params[0])
+		v.cursorY = row - 1
+		v.cursorX = 0
+	}
+
+	// Clamp to screen bounds
+	if v.cursorX < 0 {
+		v.cursorX = 0
+	}
+	if v.cursorX >= v.width {
+		v.cursorX = v.width - 1
+	}
+	if v.cursorY < 0 {
+		v.cursorY = 0
+	}
+	if v.cursorY >= v.height {
+		v.cursorY = v.height - 1
+	}
+}
+
+func (v *WebView) handleEraseDisplay(seq string) {
+	paramStr := seq[2 : len(seq)-1] // Remove ESC[ and J
+	param := 0
+	if paramStr != "" {
+		param, _ = strconv.Atoi(paramStr)
+	}
+
+	switch param {
+	case 0: // Clear from cursor to end of screen
+		v.clearFromCursor()
+	case 1: // Clear from beginning of screen to cursor
+		v.clearToCursor()
+	case 2: // Clear entire screen
+		v.clearScreen()
+	}
+}
+
+func (v *WebView) handleEraseLine(seq string) {
+	paramStr := seq[2 : len(seq)-1] // Remove ESC[ and K
+	param := 0
+	if paramStr != "" {
+		param, _ = strconv.Atoi(paramStr)
+	}
+
+	switch param {
+	case 0: // Clear from cursor to end of line
+		v.clearLineFromCursor()
+	case 1: // Clear from beginning of line to cursor
+		v.clearLineToCursor()
+	case 2: // Clear entire line
+		v.clearLine()
+	}
+}
+
+func (v *WebView) handleCursorMove(seq string, dx, dy int) {
+	paramStr := seq[2 : len(seq)-1] // Remove ESC[ and direction letter
+	count := 1
+	if paramStr != "" {
+		count, _ = strconv.Atoi(paramStr)
+		if count <= 0 {
+			count = 1
+		}
+	}
+
+	v.cursorX += dx * count
+	v.cursorY += dy * count
+
+	// Clamp to screen bounds
+	if v.cursorX < 0 {
+		v.cursorX = 0
+	}
+	if v.cursorX >= v.width {
+		v.cursorX = v.width - 1
+	}
+	if v.cursorY < 0 {
+		v.cursorY = 0
+	}
+	if v.cursorY >= v.height {
+		v.cursorY = v.height - 1
+	}
+}
+
+func (v *WebView) resetAttributes() {
+	v.currentFgColor = "#FFFFFF"
+	v.currentBgColor = "#000000"
+	v.currentBold = false
+	v.currentInverse = false
+	v.currentBlink = false
+}
+
+func (v *WebView) resetTerminalState() {
+	v.resetAttributes()
+	v.cursorX = 0
+	v.cursorY = 0
+}
+
+func (v *WebView) writeCharacter(char rune) {
+	if v.cursorX < v.width && v.cursorY < v.height {
+		cell := &v.buffer[v.cursorY][v.cursorX]
+		cell.Char = char
+		cell.FgColor = v.currentFgColor
+		cell.BgColor = v.currentBgColor
+		cell.Bold = v.currentBold
+		cell.Inverse = v.currentInverse
+		cell.Blink = v.currentBlink
+		cell.Changed = true
+
+		// Apply tileset mapping if available
+		if v.tileset != nil {
+			if mapping := v.tileset.GetMapping(char); mapping != nil {
+				cell.TileX = mapping.X
+				cell.TileY = mapping.Y
+				if mapping.FgColor != "" {
+					cell.FgColor = mapping.FgColor
+				}
+				if mapping.BgColor != "" {
+					cell.BgColor = mapping.BgColor
+				}
+			}
+		}
+	}
+
+	v.cursorX++
+	if v.cursorX >= v.width {
+		v.cursorX = 0
+		v.cursorY++
+		if v.cursorY >= v.height {
+			v.scrollUp()
+			v.cursorY = v.height - 1
 		}
 	}
 }
 
 // scrollUp scrolls the buffer up by one line
 func (v *WebView) scrollUp() {
+	// Move all lines up
 	for y := 0; y < v.height-1; y++ {
 		copy(v.buffer[y], v.buffer[y+1])
 	}
+
 	// Clear last line
 	for x := 0; x < v.width; x++ {
 		v.buffer[v.height-1][x] = Cell{
 			Char:    ' ',
-			FgColor: "#FFFFFF",
-			BgColor: "#000000",
+			FgColor: v.currentFgColor,
+			BgColor: v.currentBgColor,
+			Bold:    false,
+			Inverse: false,
+			Blink:   false,
+			Changed: true,
+		}
+	}
+}
+
+func (v *WebView) scrollDown() {
+	// Move all lines down
+	for y := v.height - 1; y > 0; y-- {
+		copy(v.buffer[y], v.buffer[y-1])
+	}
+
+	// Clear first line
+	for x := 0; x < v.width; x++ {
+		v.buffer[0][x] = Cell{
+			Char:    ' ',
+			FgColor: v.currentFgColor,
+			BgColor: v.currentBgColor,
+			Bold:    false,
+			Inverse: false,
+			Blink:   false,
+			Changed: true,
+		}
+	}
+}
+
+func (v *WebView) clearScreen() {
+	for y := 0; y < v.height; y++ {
+		for x := 0; x < v.width; x++ {
+			v.buffer[y][x] = Cell{
+				Char:    ' ',
+				FgColor: v.currentFgColor,
+				BgColor: v.currentBgColor,
+				Bold:    false,
+				Inverse: false,
+				Blink:   false,
+				Changed: true,
+			}
+		}
+	}
+}
+
+func (v *WebView) clearFromCursor() {
+	// Clear from cursor to end of current line
+	for x := v.cursorX; x < v.width; x++ {
+		v.buffer[v.cursorY][x] = Cell{
+			Char:    ' ',
+			FgColor: v.currentFgColor,
+			BgColor: v.currentBgColor,
+			Bold:    false,
+			Inverse: false,
+			Blink:   false,
+			Changed: true,
+		}
+	}
+
+	// Clear all lines below current
+	for y := v.cursorY + 1; y < v.height; y++ {
+		for x := 0; x < v.width; x++ {
+			v.buffer[y][x] = Cell{
+				Char:    ' ',
+				FgColor: v.currentFgColor,
+				BgColor: v.currentBgColor,
+				Bold:    false,
+				Inverse: false,
+				Blink:   false,
+				Changed: true,
+			}
+		}
+	}
+}
+
+func (v *WebView) clearToCursor() {
+	// Clear all lines above current
+	for y := 0; y < v.cursorY; y++ {
+		for x := 0; x < v.width; x++ {
+			v.buffer[y][x] = Cell{
+				Char:    ' ',
+				FgColor: v.currentFgColor,
+				BgColor: v.currentBgColor,
+				Bold:    false,
+				Inverse: false,
+				Blink:   false,
+				Changed: true,
+			}
+		}
+	}
+
+	// Clear from beginning of current line to cursor
+	for x := 0; x <= v.cursorX && x < v.width; x++ {
+		v.buffer[v.cursorY][x] = Cell{
+			Char:    ' ',
+			FgColor: v.currentFgColor,
+			BgColor: v.currentBgColor,
+			Bold:    false,
+			Inverse: false,
+			Blink:   false,
+			Changed: true,
+		}
+	}
+}
+
+func (v *WebView) clearLine() {
+	for x := 0; x < v.width; x++ {
+		v.buffer[v.cursorY][x] = Cell{
+			Char:    ' ',
+			FgColor: v.currentFgColor,
+			BgColor: v.currentBgColor,
+			Bold:    false,
+			Inverse: false,
+			Blink:   false,
+			Changed: true,
+		}
+	}
+}
+
+func (v *WebView) clearLineFromCursor() {
+	for x := v.cursorX; x < v.width; x++ {
+		v.buffer[v.cursorY][x] = Cell{
+			Char:    ' ',
+			FgColor: v.currentFgColor,
+			BgColor: v.currentBgColor,
+			Bold:    false,
+			Inverse: false,
+			Blink:   false,
+			Changed: true,
+		}
+	}
+}
+
+func (v *WebView) clearLineToCursor() {
+	for x := 0; x <= v.cursorX && x < v.width; x++ {
+		v.buffer[v.cursorY][x] = Cell{
+			Char:    ' ',
+			FgColor: v.currentFgColor,
+			BgColor: v.currentBgColor,
+			Bold:    false,
+			Inverse: false,
+			Blink:   false,
+			Changed: true,
 		}
 	}
 }
@@ -204,9 +617,13 @@ func (v *WebView) Clear() error {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 
-	v.initBuffer()
+	v.clearScreen()
 	v.cursorX = 0
 	v.cursorY = 0
+
+	// Update state manager
+	state := v.getCurrentState()
+	v.stateManager.UpdateState(state)
 
 	return nil
 }
@@ -216,48 +633,19 @@ func (v *WebView) SetSize(width, height int) error {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 
-	if width <= 0 || height <= 0 {
-		return dgclient.ErrInvalidTerminalSize
-	}
-
-	oldBuffer := v.buffer
-	oldWidth := v.width
-	oldHeight := v.height
-
 	v.width = width
 	v.height = height
 	v.initBuffer()
 
-	// Copy old content
-	copyHeight := oldHeight
-	if height < oldHeight {
-		copyHeight = height
-	}
-
-	for y := 0; y < copyHeight; y++ {
-		copyWidth := oldWidth
-		if width < oldWidth {
-			copyWidth = width
-		}
-
-		for x := 0; x < copyWidth; x++ {
-			v.buffer[y][x] = oldBuffer[y][x]
-		}
-	}
-
-	// Adjust cursor position
-	if v.cursorX >= width {
-		v.cursorX = width - 1
-	}
-	if v.cursorY >= height {
-		v.cursorY = height - 1
-	}
+	// Update state manager
+	state := v.getCurrentState()
+	v.stateManager.UpdateState(state)
 
 	return nil
 }
 
 // GetSize returns current dimensions
-func (v *WebView) GetSize() (width, height int) {
+func (v *WebView) GetSize() (int, int) {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
 
@@ -286,7 +674,7 @@ func (v *WebView) SendInput(data []byte) {
 	select {
 	case v.inputChan <- data:
 	default:
-		// Channel full, drop input
+		// Input buffer full, drop input
 	}
 }
 
@@ -300,22 +688,22 @@ func (v *WebView) GetCurrentState() *GameState {
 
 // getCurrentState returns current state without locking (internal use)
 func (v *WebView) getCurrentState() *GameState {
-	// Deep copy buffer
-	buffer := make([][]Cell, v.height)
-	for y := range buffer {
-		buffer[y] = make([]Cell, v.width)
-		copy(buffer[y], v.buffer[y])
-	}
-
-	return &GameState{
-		Buffer:    buffer,
+	state := &GameState{
+		Buffer:    make([][]Cell, v.height),
 		Width:     v.width,
 		Height:    v.height,
 		CursorX:   v.cursorX,
 		CursorY:   v.cursorY,
-		Version:   v.stateManager.GetCurrentVersion(),
-		Timestamp: time.Now().UnixNano(),
+		Timestamp: time.Now().UnixMilli(),
 	}
+
+	// Copy buffer
+	for y := 0; y < v.height; y++ {
+		state.Buffer[y] = make([]Cell, v.width)
+		copy(state.Buffer[y], v.buffer[y])
+	}
+
+	return state
 }
 
 // WaitForUpdate waits for the next screen update
@@ -335,20 +723,26 @@ func (v *WebView) SetTileset(tileset *TilesetConfig) {
 
 	v.tileset = tileset
 
-	// Reapply tileset to current buffer
-	for y := 0; y < v.height; y++ {
-		for x := 0; x < v.width; x++ {
-			cell := &v.buffer[y][x]
-			if mapping := tileset.GetMapping(cell.Char); mapping != nil {
-				cell.TileX = mapping.X
-				cell.TileY = mapping.Y
-				if mapping.FgColor != "" {
-					cell.FgColor = mapping.FgColor
-				}
-				if mapping.BgColor != "" {
-					cell.BgColor = mapping.BgColor
+	// Re-apply tileset mappings to current buffer
+	if tileset != nil {
+		for y := 0; y < v.height; y++ {
+			for x := 0; x < v.width; x++ {
+				cell := &v.buffer[y][x]
+				if mapping := tileset.GetMapping(cell.Char); mapping != nil {
+					cell.TileX = mapping.X
+					cell.TileY = mapping.Y
+					cell.Changed = true
 				}
 			}
 		}
+
+		// Update state manager
+		state := v.getCurrentState()
+		v.stateManager.UpdateState(state)
 	}
+}
+
+// GetStateManager returns the state manager for this view
+func (v *WebView) GetStateManager() *StateManager {
+	return v.stateManager
 }

@@ -5,28 +5,6 @@
     font-display: block;
 }
 
-body {
-    margin: 0;
-    padding: 20px;
-    background-color: #1a1a1a;
-    color: white;
-    font-family: 'Mono', monospace;
-}
-
-body {
-    margin: 0;
-    padding: 20px;
-    background-color: #1a1a1a;
-    color: white;
-    font-family: monospace;
-}
-
-#gameCanvas {
-    display: block;
-    margin: 20px auto;
-    border: 2px solid #444;
-}
-
 #gameCanvas {
     display: block;
     margin: 20px auto;
@@ -36,6 +14,20 @@ body {
     image-rendering: -webkit-crisp-edges;
     image-rendering: pixelated;
     image-rendering: crisp-edges;
+    /* Better color rendering */
+    color-interpolation: auto;
+    color-rendering: optimizeQuality;
+}
+
+/* Add some visual improvements for better color contrast */
+body {
+    margin: 0;
+    padding: 20px;
+    background-color: #1a1a1a;
+    color: white;
+    font-family: monospace;
+    /* Better color handling */
+    color-scheme: dark;
 }
 
 /* Add loading indicator for better UX */
@@ -47,6 +39,17 @@ body {
 .loading::after {
     content: '...';
     animation: dots 1.5s steps(4, end) infinite;
+}
+
+/* Ensure good contrast for UI elements */
+#connectionStatus {
+    backdrop-filter: blur(4px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+#errorMessage {
+    backdrop-filter: blur(4px);
+    border: 1px solid rgba(255, 0, 0, 0.5);
 }
 
 @keyframes dots {
