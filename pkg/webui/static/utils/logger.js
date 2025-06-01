@@ -31,8 +31,12 @@ class Logger {
     this.moduleName = moduleName;
     this.level = level;
     this.startTime = Date.now();
-    
-    console.log(`[Logger] Logger created for module: ${moduleName}, level: ${this.getLevelName(level)}`);
+
+    console.log(
+      `[Logger] Logger created for module: ${moduleName}, level: ${this.getLevelName(
+        level
+      )}`
+    );
   }
 
   /**
@@ -42,8 +46,8 @@ class Logger {
    * @private
    */
   getLevelName(level) {
-    const names = ['ERROR', 'WARN', 'INFO', 'DEBUG'];
-    return names[level] || 'UNKNOWN';
+    const names = ["ERROR", "WARN", "INFO", "DEBUG"];
+    return names[level] || "UNKNOWN";
   }
 
   /**
@@ -68,7 +72,7 @@ class Logger {
   formatMessage(level, method, message, data) {
     const timestamp = this.getTimestamp();
     const prefix = `[${this.moduleName}] ${method}: ${message}`;
-    
+
     if (data !== undefined) {
       return `${timestamp} ${level} ${prefix}`;
     }
@@ -83,7 +87,7 @@ class Logger {
    */
   error(method, message, error) {
     if (this.level >= LogLevel.ERROR) {
-      const formattedMsg = this.formatMessage('ERROR', method, message);
+      const formattedMsg = this.formatMessage("ERROR", method, message);
       if (error) {
         console.error(formattedMsg, error);
         if (error instanceof Error && error.stack) {
@@ -103,7 +107,7 @@ class Logger {
    */
   warn(method, message, data) {
     if (this.level >= LogLevel.WARN) {
-      const formattedMsg = this.formatMessage('WARN', method, message);
+      const formattedMsg = this.formatMessage("WARN", method, message);
       if (data !== undefined) {
         console.warn(formattedMsg, data);
       } else {
@@ -120,7 +124,7 @@ class Logger {
    */
   info(method, message, data) {
     if (this.level >= LogLevel.INFO) {
-      const formattedMsg = this.formatMessage('INFO', method, message);
+      const formattedMsg = this.formatMessage("INFO", method, message);
       if (data !== undefined) {
         console.log(formattedMsg, data);
       } else {
@@ -137,7 +141,7 @@ class Logger {
    */
   debug(method, message, data) {
     if (this.level >= LogLevel.DEBUG) {
-      const formattedMsg = this.formatMessage('DEBUG', method, message);
+      const formattedMsg = this.formatMessage("DEBUG", method, message);
       if (data !== undefined) {
         console.log(formattedMsg, data);
       } else {
@@ -153,7 +157,8 @@ class Logger {
    */
   enter(method, params) {
     if (this.level >= LogLevel.DEBUG) {
-      const message = params !== undefined ? 'entering with params' : 'entering';
+      const message =
+        params !== undefined ? "entering with params" : "entering";
       this.debug(method, message, params);
     }
   }
@@ -165,7 +170,7 @@ class Logger {
    */
   exit(method, result) {
     if (this.level >= LogLevel.DEBUG) {
-      const message = result !== undefined ? 'exiting with result' : 'exiting';
+      const message = result !== undefined ? "exiting with result" : "exiting";
       this.debug(method, message, result);
     }
   }
@@ -178,8 +183,8 @@ class Logger {
    */
   time(method, fn) {
     const startTime = performance.now();
-    this.debug(method, 'performance timing started');
-    
+    this.debug(method, "performance timing started");
+
     try {
       const result = fn();
       const duration = performance.now() - startTime;
@@ -200,8 +205,8 @@ class Logger {
    */
   async timeAsync(method, fn) {
     const startTime = performance.now();
-    this.debug(method, 'async performance timing started');
-    
+    this.debug(method, "async performance timing started");
+
     try {
       const result = await fn();
       const duration = performance.now() - startTime;
@@ -236,11 +241,6 @@ function setGlobalLogLevel(level) {
 }
 
 // Export public interface
-export { 
-  createLogger, 
-  setGlobalLogLevel, 
-  LogLevel, 
-  Logger 
-};
+export { createLogger, setGlobalLogLevel, LogLevel, Logger };
 
-console.log('[Logger] Logger module loaded successfully');
+console.log("[Logger] Logger module loaded successfully");

@@ -6,7 +6,7 @@
  * @version 1.0.0
  */
 
-import { createLogger, LogLevel } from '../utils/logger.js';
+import { createLogger, LogLevel } from "../utils/logger.js";
 
 /**
  * @class GameCell
@@ -26,9 +26,9 @@ class GameCell {
    * @param {number} [data.tile_y] - Tileset Y coordinate (if using tileset)
    */
   constructor(data = {}) {
-    this.char = data.char !== undefined ? data.char : ' ';
-    this.fg_color = data.fg_color || '#FFFFFF';
-    this.bg_color = data.bg_color || '#000000';
+    this.char = data.char !== undefined ? data.char : " ";
+    this.fg_color = data.fg_color || "#FFFFFF";
+    this.bg_color = data.bg_color || "#000000";
     this.bold = Boolean(data.bold);
     this.inverse = Boolean(data.inverse);
     this.blink = Boolean(data.blink);
@@ -42,10 +42,10 @@ class GameCell {
    * @returns {string} Character to display
    */
   getDisplayChar() {
-    if (typeof this.char === 'number') {
+    if (typeof this.char === "number") {
       return String.fromCharCode(this.char);
     }
-    return this.char || ' ';
+    return this.char || " ";
   }
 
   /**
@@ -62,7 +62,7 @@ class GameCell {
    */
   isEmpty() {
     const char = this.getDisplayChar();
-    return char === ' ' && this.bg_color === '#000000';
+    return char === " " && this.bg_color === "#000000";
   }
 
   /**
@@ -89,15 +89,17 @@ class GameCell {
    */
   equals(other) {
     if (!other) return false;
-    
-    return this.char === other.char &&
-           this.fg_color === other.fg_color &&
-           this.bg_color === other.bg_color &&
-           this.bold === other.bold &&
-           this.inverse === other.inverse &&
-           this.blink === other.blink &&
-           this.tile_x === other.tile_x &&
-           this.tile_y === other.tile_y;
+
+    return (
+      this.char === other.char &&
+      this.fg_color === other.fg_color &&
+      this.bg_color === other.bg_color &&
+      this.bold === other.bold &&
+      this.inverse === other.inverse &&
+      this.blink === other.blink &&
+      this.tile_x === other.tile_x &&
+      this.tile_y === other.tile_y
+    );
   }
 
   /**
@@ -190,7 +192,7 @@ class StateChangeTracker {
    * Creates a new StateChangeTracker instance
    */
   constructor() {
-    this.logger = createLogger('StateChangeTracker', LogLevel.DEBUG);
+    this.logger = createLogger("StateChangeTracker", LogLevel.DEBUG);
     this.changedCells = new Set();
     this.cursorChanged = false;
     this.dimensionsChanged = false;
@@ -206,7 +208,10 @@ class StateChangeTracker {
     const key = `${x},${y}`;
     this.changedCells.add(key);
     this.lastChangeTime = Date.now();
-    this.logger.debug('markCellChanged', `Cell marked as changed: (${x}, ${y})`);
+    this.logger.debug(
+      "markCellChanged",
+      `Cell marked as changed: (${x}, ${y})`
+    );
   }
 
   /**
@@ -215,7 +220,7 @@ class StateChangeTracker {
   markCursorChanged() {
     this.cursorChanged = true;
     this.lastChangeTime = Date.now();
-    this.logger.debug('markCursorChanged', 'Cursor position marked as changed');
+    this.logger.debug("markCursorChanged", "Cursor position marked as changed");
   }
 
   /**
@@ -224,7 +229,7 @@ class StateChangeTracker {
   markDimensionsChanged() {
     this.dimensionsChanged = true;
     this.lastChangeTime = Date.now();
-    this.logger.debug('markDimensionsChanged', 'Dimensions marked as changed');
+    this.logger.debug("markDimensionsChanged", "Dimensions marked as changed");
   }
 
   /**
@@ -233,11 +238,14 @@ class StateChangeTracker {
    */
   getChangedCells() {
     const cells = Array.from(this.changedCells).map(key => {
-      const [x, y] = key.split(',').map(Number);
+      const [x, y] = key.split(",").map(Number);
       return { x, y };
     });
-    
-    this.logger.debug('getChangedCells', `Retrieved ${cells.length} changed cells`);
+
+    this.logger.debug(
+      "getChangedCells",
+      `Retrieved ${cells.length} changed cells`
+    );
     return cells;
   }
 
@@ -246,7 +254,9 @@ class StateChangeTracker {
    * @returns {boolean} True if changes exist
    */
   hasChanges() {
-    return this.changedCells.size > 0 || this.cursorChanged || this.dimensionsChanged;
+    return (
+      this.changedCells.size > 0 || this.cursorChanged || this.dimensionsChanged
+    );
   }
 
   /**
@@ -257,8 +267,11 @@ class StateChangeTracker {
     this.changedCells.clear();
     this.cursorChanged = false;
     this.dimensionsChanged = false;
-    
-    this.logger.debug('clearChanges', `Cleared ${cellCount} cell changes and flags`);
+
+    this.logger.debug(
+      "clearChanges",
+      `Cleared ${cellCount} cell changes and flags`
+    );
   }
 
   /**
@@ -293,34 +306,36 @@ class GameState {
    * @param {number} [data.timestamp] - State timestamp
    */
   constructor(data = {}) {
-    this.logger = createLogger('GameState', LogLevel.INFO);
-    
+    this.logger = createLogger("GameState", LogLevel.INFO);
+
     // Terminal dimensions
     this.width = Math.max(1, data.width || 80);
     this.height = Math.max(1, data.height || 24);
-    
+
     // State metadata
     this.version = data.version || 0;
     this.timestamp = data.timestamp || Date.now();
-    
+
     // Cursor position
-    this.cursor = new CursorPosition(
-      data.cursor_x || 0,
-      data.cursor_y || 0
-    );
-    
+    this.cursor = new CursorPosition(data.cursor_x || 0, data.cursor_y || 0);
+
     // Change tracking
     this.changeTracker = new StateChangeTracker();
-    
+
     // Initialize buffer
     this.buffer = this._createBuffer();
-    
+
     // Load initial buffer data if provided
     if (data.buffer) {
       this._loadBufferData(data.buffer);
     }
-    
-    this.logger.info('constructor', `Game state initialized: ${this.width}x${this.height}, version ${this.version}`);
+
+    this.logger.info(
+      "constructor",
+      `Game state initialized: ${this.width}x${this.height}, version ${
+        this.version
+      }`
+    );
   }
 
   /**
@@ -329,8 +344,11 @@ class GameState {
    * @private
    */
   _createBuffer() {
-    this.logger.debug('_createBuffer', `Creating buffer: ${this.width}x${this.height}`);
-    
+    this.logger.debug(
+      "_createBuffer",
+      `Creating buffer: ${this.width}x${this.height}`
+    );
+
     const buffer = [];
     for (let y = 0; y < this.height; y++) {
       buffer[y] = [];
@@ -338,7 +356,7 @@ class GameState {
         buffer[y][x] = new GameCell();
       }
     }
-    
+
     return buffer;
   }
 
@@ -348,20 +366,23 @@ class GameState {
    * @private
    */
   _loadBufferData(bufferData) {
-    this.logger.enter('_loadBufferData', { 
-      rows: bufferData ? bufferData.length : 0 
+    this.logger.enter("_loadBufferData", {
+      rows: bufferData ? bufferData.length : 0
     });
-    
+
     if (!Array.isArray(bufferData)) {
-      this.logger.warn('_loadBufferData', 'Invalid buffer data format, expected array');
+      this.logger.warn(
+        "_loadBufferData",
+        "Invalid buffer data format, expected array"
+      );
       return;
     }
-    
+
     let loadedCells = 0;
-    
+
     for (let y = 0; y < Math.min(bufferData.length, this.height); y++) {
       if (!Array.isArray(bufferData[y])) continue;
-      
+
       for (let x = 0; x < Math.min(bufferData[y].length, this.width); x++) {
         if (bufferData[y][x]) {
           this.buffer[y][x] = new GameCell(bufferData[y][x]);
@@ -369,8 +390,8 @@ class GameState {
         }
       }
     }
-    
-    this.logger.exit('_loadBufferData', { loadedCells });
+
+    this.logger.exit("_loadBufferData", { loadedCells });
   }
 
   /**
@@ -383,7 +404,7 @@ class GameState {
     if (x < 0 || x >= this.width || y < 0 || y >= this.height) {
       return null;
     }
-    
+
     return this.buffer[y][x];
   }
 
@@ -396,20 +417,24 @@ class GameState {
    */
   setCell(x, y, cellData) {
     if (x < 0 || x >= this.width || y < 0 || y >= this.height) {
-      this.logger.warn('setCell', `Attempted to set cell out of bounds: (${x}, ${y})`);
+      this.logger.warn(
+        "setCell",
+        `Attempted to set cell out of bounds: (${x}, ${y})`
+      );
       return false;
     }
-    
-    const cell = cellData instanceof GameCell ? cellData : new GameCell(cellData);
+
+    const cell =
+      cellData instanceof GameCell ? cellData : new GameCell(cellData);
     const oldCell = this.buffer[y][x];
-    
+
     // Only update if cell actually changed
     if (!oldCell.equals(cell)) {
       this.buffer[y][x] = cell;
       this.changeTracker.markCellChanged(x, y);
-      this.logger.debug('setCell', `Cell updated at (${x}, ${y})`);
+      this.logger.debug("setCell", `Cell updated at (${x}, ${y})`);
     }
-    
+
     return true;
   }
 
@@ -419,20 +444,20 @@ class GameState {
    * @param {number} newHeight - New terminal height
    */
   resize(newWidth, newHeight) {
-    this.logger.enter('resize', { 
+    this.logger.enter("resize", {
       oldSize: `${this.width}x${this.height}`,
-      newSize: `${newWidth}x${newHeight}` 
+      newSize: `${newWidth}x${newHeight}`
     });
-    
+
     const oldWidth = this.width;
     const oldHeight = this.height;
-    
+
     this.width = Math.max(1, newWidth);
     this.height = Math.max(1, newHeight);
-    
+
     // Create new buffer
     const newBuffer = this._createBuffer();
-    
+
     // Copy existing data
     for (let y = 0; y < Math.min(oldHeight, this.height); y++) {
       for (let x = 0; x < Math.min(oldWidth, this.width); x++) {
@@ -441,10 +466,10 @@ class GameState {
         }
       }
     }
-    
+
     this.buffer = newBuffer;
     this.changeTracker.markDimensionsChanged();
-    
+
     // Ensure cursor is within bounds
     if (this.cursor.x >= this.width) {
       this.cursor.x = this.width - 1;
@@ -454,8 +479,8 @@ class GameState {
       this.cursor.y = this.height - 1;
       this.changeTracker.markCursorChanged();
     }
-    
-    this.logger.exit('resize', { success: true });
+
+    this.logger.exit("resize", { success: true });
   }
 
   /**
@@ -466,15 +491,20 @@ class GameState {
   moveCursor(x, y) {
     const oldX = this.cursor.x;
     const oldY = this.cursor.y;
-    
+
     this.cursor.moveTo(
       Math.max(0, Math.min(x, this.width - 1)),
       Math.max(0, Math.min(y, this.height - 1))
     );
-    
+
     if (oldX !== this.cursor.x || oldY !== this.cursor.y) {
       this.changeTracker.markCursorChanged();
-      this.logger.debug('moveCursor', `Cursor moved from (${oldX}, ${oldY}) to (${this.cursor.x}, ${this.cursor.y})`);
+      this.logger.debug(
+        "moveCursor",
+        `Cursor moved from (${oldX}, ${oldY}) to (${this.cursor.x}, ${
+          this.cursor.y
+        })`
+      );
     }
   }
 
@@ -488,27 +518,27 @@ class GameState {
    * @param {number} [diff.timestamp] - Update timestamp
    */
   applyChanges(diff) {
-    this.logger.enter('applyChanges', { 
+    this.logger.enter("applyChanges", {
       version: diff.version,
       hasChanges: Array.isArray(diff.changes),
       changeCount: diff.changes ? diff.changes.length : 0
     });
-    
+
     if (!diff) {
-      this.logger.warn('applyChanges', 'No diff provided');
+      this.logger.warn("applyChanges", "No diff provided");
       return;
     }
-    
+
     // Update version
     if (diff.version !== undefined && diff.version > this.version) {
       this.version = diff.version;
     }
-    
+
     // Update timestamp
     if (diff.timestamp !== undefined) {
       this.timestamp = diff.timestamp;
     }
-    
+
     // Update cursor position
     if (diff.cursor_x !== undefined || diff.cursor_y !== undefined) {
       this.moveCursor(
@@ -516,23 +546,30 @@ class GameState {
         diff.cursor_y !== undefined ? diff.cursor_y : this.cursor.y
       );
     }
-    
+
     // Apply cell changes
     if (Array.isArray(diff.changes)) {
       let appliedChanges = 0;
-      
+
       for (const change of diff.changes) {
-        if (change && typeof change.x === 'number' && typeof change.y === 'number') {
+        if (
+          change &&
+          typeof change.x === "number" &&
+          typeof change.y === "number"
+        ) {
           if (this.setCell(change.x, change.y, change)) {
             appliedChanges++;
           }
         }
       }
-      
-      this.logger.info('applyChanges', `Applied ${appliedChanges} cell changes`);
+
+      this.logger.info(
+        "applyChanges",
+        `Applied ${appliedChanges} cell changes`
+      );
     }
-    
-    this.logger.exit('applyChanges', { 
+
+    this.logger.exit("applyChanges", {
       newVersion: this.version,
       hasChanges: this.changeTracker.hasChanges()
     });
@@ -542,8 +579,8 @@ class GameState {
    * Clears the entire buffer
    */
   clear() {
-    this.logger.info('clear', 'Clearing entire buffer');
-    
+    this.logger.info("clear", "Clearing entire buffer");
+
     for (let y = 0; y < this.height; y++) {
       for (let x = 0; x < this.width; x++) {
         this.buffer[y][x] = new GameCell();
@@ -566,8 +603,8 @@ class GameState {
       totalCells: this.width * this.height,
       age: Date.now() - this.timestamp
     };
-    
-    this.logger.debug('getStats', 'Retrieved state statistics', stats);
+
+    this.logger.debug("getStats", "Retrieved state statistics", stats);
     return stats;
   }
 
@@ -585,23 +622,16 @@ class GameState {
       cursor_x: this.cursor.x,
       cursor_y: this.cursor.y
     };
-    
+
     if (includeBuffer) {
-      result.buffer = this.buffer.map(row => 
-        row.map(cell => cell.toJSON())
-      );
+      result.buffer = this.buffer.map(row => row.map(cell => cell.toJSON()));
     }
-    
+
     return result;
   }
 }
 
 // Export public interface
-export { 
-  GameState, 
-  GameCell, 
-  CursorPosition, 
-  StateChangeTracker 
-};
+export { GameState, GameCell, CursorPosition, StateChangeTracker };
 
-console.log('[GameState] Game state model module loaded successfully');
+console.log("[GameState] Game state model module loaded successfully");

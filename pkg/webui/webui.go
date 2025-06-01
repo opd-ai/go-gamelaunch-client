@@ -3,11 +3,14 @@ package webui
 import (
 	"bytes"
 	"context"
+	"embed"
 	"encoding/json"
 	"fmt"
 	"image/png"
 	"log"
 	"net/http"
+	"path/filepath"
+	"strings"
 	"time"
 
 	_ "embed"
@@ -18,8 +21,8 @@ import (
 //go:embed static/index.html
 var staticIndexHTML string
 
-//go:embed static/script.js
-var staticIndexJS string
+//go:embed static/*
+var staticIndexJS embed.FS
 
 //go:embed static/style.css
 var staticIndexCSS string
@@ -102,26 +105,30 @@ func (w *WebUI) setupRoutes() {
 	} else {
 		// Serve embedded files
 		w.mux.HandleFunc("/", func(rw http.ResponseWriter, r *http.Request) {
-			switch r.URL.Path {
-			case "/":
-				rw.Header().Set("Content-Type", "text/html; charset=utf-8")
-				rw.Write([]byte(staticIndexHTML))
-			case "/script.js":
+			if strings.HasSuffix(r.URL.Path, ".js") {
 				rw.Header().Set("Content-Type", "application/javascript; charset=utf-8")
-				rw.Write([]byte(staticIndexJS))
-			case "/style.css":
-				rw.Header().Set("Content-Type", "text/css; charset=utf-8")
-				rw.Write([]byte(staticIndexCSS))
-			case "/static/script.js":
-				rw.Header().Set("Content-Type", "application/javascript; charset=utf-8")
-				rw.Write([]byte(staticIndexJS))
-			case "/static/style.css":
-				rw.Header().Set("Content-Type", "text/css; charset=utf-8")
-				rw.Write([]byte(staticIndexCSS))
-			default:
-				log.Printf("Serving static file: %s", r.URL.Path)
-				rw.Header().Set("Content-Type", "text/html; charset=utf-8")
-				rw.Write([]byte(staticIndexHTML))
+				data, err := staticIndexJS.ReadFile(filepath.Join("static", r.URL.Path))
+				if err != nil {
+					http.Error(rw, "Failed to read static file", http.StatusInternalServerError)
+					return
+				}
+				rw.Write(data)
+			} else {
+				switch r.URL.Path {
+				case "/":
+					rw.Header().Set("Content-Type", "text/html; charset=utf-8")
+					rw.Write([]byte(staticIndexHTML))
+				case "/style.css":
+					rw.Header().Set("Content-Type", "text/css; charset=utf-8")
+					rw.Write([]byte(staticIndexCSS))
+				case "/static/style.css":
+					rw.Header().Set("Content-Type", "text/css; charset=utf-8")
+					rw.Write([]byte(staticIndexCSS))
+				default:
+					log.Printf("Serving static file: %s", r.URL.Path)
+					rw.Header().Set("Content-Type", "text/html; charset=utf-8")
+					rw.Write([]byte(staticIndexHTML))
+				}
 			}
 		})
 	}

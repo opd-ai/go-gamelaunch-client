@@ -6,7 +6,7 @@
  * @version 1.0.0
  */
 
-import { createLogger, LogLevel } from '../utils/logger.js';
+import { createLogger, LogLevel } from "../utils/logger.js";
 
 /**
  * @class RPCError
@@ -23,7 +23,7 @@ class RPCError extends Error {
    */
   constructor(code, message, data = null, method = null) {
     super(`RPC Error ${code}: ${message}`);
-    this.name = 'RPCError';
+    this.name = "RPCError";
     this.code = code;
     this.rpcMessage = message;
     this.data = data;
@@ -59,7 +59,7 @@ class RPCRequest {
    * @param {number|string} [id] - Request ID (auto-generated if not provided)
    */
   constructor(method, params = {}, id = null) {
-    this.jsonrpc = '2.0';
+    this.jsonrpc = "2.0";
     this.method = method;
     this.params = params;
     this.id = id || Date.now() + Math.random();
@@ -105,22 +105,25 @@ class RPCClient {
    * @param {number} [options.retryDelay=1000] - Delay between retry attempts in milliseconds
    * @param {Object} [options.headers={}] - Additional HTTP headers
    */
-  constructor(endpoint = '/rpc', options = {}) {
+  constructor(endpoint = "/rpc", options = {}) {
     this.endpoint = endpoint;
     this.timeout = options.timeout || 30000;
     this.retryAttempts = options.retryAttempts || 3;
     this.retryDelay = options.retryDelay || 1000;
     this.headers = {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
       ...options.headers
     };
-    
-    this.logger = createLogger('RPCClient', LogLevel.INFO);
+
+    this.logger = createLogger("RPCClient", LogLevel.INFO);
     this.pendingRequests = new Map();
     this.requestCount = 0;
     this.errorCount = 0;
-    
-    this.logger.info('constructor', `RPC client initialized with endpoint: ${endpoint}`);
+
+    this.logger.info(
+      "constructor",
+      `RPC client initialized with endpoint: ${endpoint}`
+    );
   }
 
   /**
@@ -135,8 +138,8 @@ class RPCClient {
    * @throws {Error} When network or other errors occur
    */
   async call(method, params = {}, options = {}) {
-    this.logger.enter('call', { method, params: Object.keys(params) });
-    
+    this.logger.enter("call", { method, params: Object.keys(params) });
+
     const request = new RPCRequest(method, params);
     const callOptions = {
       timeout: options.timeout || this.timeout,
@@ -146,11 +149,11 @@ class RPCClient {
 
     try {
       const result = await this._executeRequest(request, callOptions);
-      this.logger.exit('call', { method, success: true });
+      this.logger.exit("call", { method, success: true });
       return result;
     } catch (error) {
       this.errorCount++;
-      this.logger.error('call', `RPC call failed for method: ${method}`, error);
+      this.logger.error("call", `RPC call failed for method: ${method}`, error);
       throw error;
     }
   }
@@ -163,57 +166,73 @@ class RPCClient {
    * @private
    */
   async _executeRequest(request, options) {
-    this.logger.enter('_executeRequest', { 
-      method: request.method, 
+    this.logger.enter("_executeRequest", {
+      method: request.method,
       attempt: request.attempts + 1,
-      maxAttempts: this.retryAttempts 
+      maxAttempts: this.retryAttempts
     });
 
     let lastError = null;
-    
+
     for (let attempt = 0; attempt <= this.retryAttempts; attempt++) {
       request.attempts = attempt;
-      
+
       try {
         const result = await this._performHTTPRequest(request, options);
-        this.logger.info('_executeRequest', 
-          `Request succeeded on attempt ${attempt + 1}`, 
-          { method: request.method });
+        this.logger.info(
+          "_executeRequest",
+          `Request succeeded on attempt ${attempt + 1}`,
+          { method: request.method }
+        );
         return result;
       } catch (error) {
         lastError = error;
-        
+
         // Don't retry on RPC errors (server processed the request)
         if (error instanceof RPCError) {
-          this.logger.warn('_executeRequest', 
-            `RPC error on attempt ${attempt + 1}, not retrying`, 
-            error.toJSON());
+          this.logger.warn(
+            "_executeRequest",
+            `RPC error on attempt ${attempt + 1}, not retrying`,
+            error.toJSON()
+          );
           break;
         }
-        
+
         // Don't retry if retries are disabled
         if (!options.retryOnError) {
-          this.logger.warn('_executeRequest', 
-            `Network error on attempt ${attempt + 1}, retries disabled`);
+          this.logger.warn(
+            "_executeRequest",
+            `Network error on attempt ${attempt + 1}, retries disabled`
+          );
           break;
         }
-        
+
         // Don't retry on the last attempt
         if (attempt >= this.retryAttempts) {
-          this.logger.error('_executeRequest', 
-            `Network error on final attempt ${attempt + 1}`);
+          this.logger.error(
+            "_executeRequest",
+            `Network error on final attempt ${attempt + 1}`
+          );
           break;
         }
-        
+
         // Wait before retrying
-        this.logger.warn('_executeRequest', 
-          `Network error on attempt ${attempt + 1}, retrying in ${this.retryDelay}ms`, 
-          error);
+        this.logger.warn(
+          "_executeRequest",
+          `Network error on attempt ${attempt + 1}, retrying in ${
+            this.retryDelay
+          }ms`,
+          error
+        );
         await this._delay(this.retryDelay);
       }
     }
-    
-    this.logger.error('_executeRequest', 'All retry attempts exhausted', lastError);
+
+    this.logger.error(
+      "_executeRequest",
+      "All retry attempts exhausted",
+      lastError
+    );
     throw lastError;
   }
 
@@ -225,9 +244,9 @@ class RPCClient {
    * @private
    */
   async _performHTTPRequest(request, options) {
-    this.logger.enter('_performHTTPRequest', { 
-      method: request.method, 
-      id: request.id 
+    this.logger.enter("_performHTTPRequest", {
+      method: request.method,
+      id: request.id
     });
 
     this.requestCount++;
@@ -240,12 +259,14 @@ class RPCClient {
         abortController.abort();
       }, options.timeout);
 
-      this.logger.debug('_performHTTPRequest', 
-        `Sending HTTP request to ${this.endpoint}`, 
-        request.toJSON());
+      this.logger.debug(
+        "_performHTTPRequest",
+        `Sending HTTP request to ${this.endpoint}`,
+        request.toJSON()
+      );
 
       const response = await fetch(this.endpoint, {
-        method: 'POST',
+        method: "POST",
         headers: this.headers,
         body: JSON.stringify(request.toJSON()),
         signal: abortController.signal
@@ -258,9 +279,9 @@ class RPCClient {
       }
 
       const result = await response.json();
-      this.logger.debug('_performHTTPRequest', 'Received response', { 
+      this.logger.debug("_performHTTPRequest", "Received response", {
         hasError: !!result.error,
-        hasResult: !!result.result 
+        hasResult: !!result.result
       });
 
       // Handle RPC error response
@@ -274,24 +295,29 @@ class RPCClient {
       }
 
       // Validate response format
-      if (result.jsonrpc !== '2.0' || result.id !== request.id) {
-        throw new Error('Invalid JSON-RPC response format');
+      if (result.jsonrpc !== "2.0" || result.id !== request.id) {
+        throw new Error("Invalid JSON-RPC response format");
       }
 
-      this.logger.exit('_performHTTPRequest', { 
-        method: request.method, 
-        success: true 
+      this.logger.exit("_performHTTPRequest", {
+        method: request.method,
+        success: true
       });
       return result.result;
-
     } catch (error) {
-      if (error.name === 'AbortError') {
-        const timeoutError = new Error(`Request timeout after ${options.timeout}ms`);
-        this.logger.error('_performHTTPRequest', 'Request timed out', timeoutError);
+      if (error.name === "AbortError") {
+        const timeoutError = new Error(
+          `Request timeout after ${options.timeout}ms`
+        );
+        this.logger.error(
+          "_performHTTPRequest",
+          "Request timed out",
+          timeoutError
+        );
         throw timeoutError;
       }
-      
-      this.logger.error('_performHTTPRequest', 'HTTP request failed', error);
+
+      this.logger.error("_performHTTPRequest", "HTTP request failed", error);
       throw error;
     } finally {
       this.pendingRequests.delete(request.id);
@@ -305,31 +331,33 @@ class RPCClient {
    * @returns {Promise<Array<*>>} Array of results (same order as requests)
    */
   async batch(requests, options = {}) {
-    this.logger.enter('batch', { requestCount: requests.length });
-    
+    this.logger.enter("batch", { requestCount: requests.length });
+
     try {
-      const promises = requests.map((req, index) => 
-        this.call(req.method, req.params, options)
-          .catch(error => ({ error, index }))
+      const promises = requests.map((req, index) =>
+        this.call(req.method, req.params, options).catch(error => ({
+          error,
+          index
+        }))
       );
-      
+
       const results = await Promise.all(promises);
-      
+
       // Check for any errors in the batch
       const errors = results.filter(r => r && r.error);
       if (errors.length > 0) {
-        this.logger.warn('batch', `${errors.length} requests failed in batch`);
+        this.logger.warn("batch", `${errors.length} requests failed in batch`);
       }
-      
-      this.logger.exit('batch', { 
-        total: requests.length, 
+
+      this.logger.exit("batch", {
+        total: requests.length,
         succeeded: results.length - errors.length,
-        failed: errors.length 
+        failed: errors.length
       });
-      
-      return results.map(r => r && r.error ? null : r);
+
+      return results.map(r => (r && r.error ? null : r));
     } catch (error) {
-      this.logger.error('batch', 'Batch execution failed', error);
+      this.logger.error("batch", "Batch execution failed", error);
       throw error;
     }
   }
@@ -342,15 +370,20 @@ class RPCClient {
     const stats = {
       requestCount: this.requestCount,
       errorCount: this.errorCount,
-      successRate: this.requestCount > 0 ? 
-        ((this.requestCount - this.errorCount) / this.requestCount * 100).toFixed(2) + '%' : 
-        '0%',
+      successRate:
+        this.requestCount > 0
+          ? (
+              (this.requestCount - this.errorCount) /
+              this.requestCount *
+              100
+            ).toFixed(2) + "%"
+          : "0%",
       pendingRequests: this.pendingRequests.size,
       endpoint: this.endpoint,
       uptime: Date.now() - this.logger.startTime
     };
-    
-    this.logger.debug('getStats', 'Retrieved client statistics', stats);
+
+    this.logger.debug("getStats", "Retrieved client statistics", stats);
     return stats;
   }
 
@@ -358,7 +391,10 @@ class RPCClient {
    * Cancels all pending requests
    */
   cancelAllRequests() {
-    this.logger.info('cancelAllRequests', `Cancelling ${this.pendingRequests.size} pending requests`);
+    this.logger.info(
+      "cancelAllRequests",
+      `Cancelling ${this.pendingRequests.size} pending requests`
+    );
     this.pendingRequests.clear();
   }
 
@@ -374,10 +410,6 @@ class RPCClient {
 }
 
 // Export public interface
-export { 
-  RPCClient, 
-  RPCError, 
-  RPCRequest 
-};
+export { RPCClient, RPCError, RPCRequest };
 
-console.log('[RPCClient] RPC client module loaded successfully');
+console.log("[RPCClient] RPC client module loaded successfully");

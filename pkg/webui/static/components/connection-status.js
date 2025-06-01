@@ -6,7 +6,7 @@
  * @version 1.0.0
  */
 
-import { createLogger, LogLevel } from '../utils/logger.js';
+import { createLogger, LogLevel } from "../utils/logger.js";
 
 /**
  * @enum {string}
@@ -14,13 +14,13 @@ import { createLogger, LogLevel } from '../utils/logger.js';
  * @description Visual status indicator states with color coding
  */
 const StatusState = {
-  DISCONNECTED: 'disconnected',
-  CONNECTING: 'connecting',
-  CONNECTED: 'connected',
-  AUTHENTICATED: 'authenticated',
-  PLAYING: 'playing',
-  ERROR: 'error',
-  RECONNECTING: 'reconnecting'
+  DISCONNECTED: "disconnected",
+  CONNECTING: "connecting",
+  CONNECTED: "connected",
+  AUTHENTICATED: "authenticated",
+  PLAYING: "playing",
+  ERROR: "error",
+  RECONNECTING: "reconnecting"
 };
 
 /**
@@ -30,53 +30,53 @@ const StatusState = {
  */
 const StatusConfig = {
   [StatusState.DISCONNECTED]: {
-    color: '#6c757d',
-    backgroundColor: '#f8f9fa',
-    icon: '●',
-    text: 'Disconnected',
-    description: 'Not connected to game server'
+    color: "#6c757d",
+    backgroundColor: "#f8f9fa",
+    icon: "●",
+    text: "Disconnected",
+    description: "Not connected to game server"
   },
   [StatusState.CONNECTING]: {
-    color: '#ffc107',
-    backgroundColor: '#fff3cd',
-    icon: '◐',
-    text: 'Connecting',
-    description: 'Establishing connection to server'
+    color: "#ffc107",
+    backgroundColor: "#fff3cd",
+    icon: "◐",
+    text: "Connecting",
+    description: "Establishing connection to server"
   },
   [StatusState.CONNECTED]: {
-    color: '#17a2b8',
-    backgroundColor: '#d1ecf1',
-    icon: '◑',
-    text: 'Connected',
-    description: 'Connected, initializing session'
+    color: "#17a2b8",
+    backgroundColor: "#d1ecf1",
+    icon: "◑",
+    text: "Connected",
+    description: "Connected, initializing session"
   },
   [StatusState.AUTHENTICATED]: {
-    color: '#28a745',
-    backgroundColor: '#d4edda',
-    icon: '◒',
-    text: 'Authenticated',
-    description: 'Session authenticated and ready'
+    color: "#28a745",
+    backgroundColor: "#d4edda",
+    icon: "◒",
+    text: "Authenticated",
+    description: "Session authenticated and ready"
   },
   [StatusState.PLAYING]: {
-    color: '#28a745',
-    backgroundColor: '#d4edda',
-    icon: '●',
-    text: 'Playing',
-    description: 'Active game session'
+    color: "#28a745",
+    backgroundColor: "#d4edda",
+    icon: "●",
+    text: "Playing",
+    description: "Active game session"
   },
   [StatusState.ERROR]: {
-    color: '#dc3545',
-    backgroundColor: '#f8d7da',
-    icon: '✕',
-    text: 'Error',
-    description: 'Connection error occurred'
+    color: "#dc3545",
+    backgroundColor: "#f8d7da",
+    icon: "✕",
+    text: "Error",
+    description: "Connection error occurred"
   },
   [StatusState.RECONNECTING]: {
-    color: '#fd7e14',
-    backgroundColor: '#ffeaa7',
-    icon: '↻',
-    text: 'Reconnecting',
-    description: 'Attempting to restore connection'
+    color: "#fd7e14",
+    backgroundColor: "#ffeaa7",
+    icon: "↻",
+    text: "Reconnecting",
+    description: "Attempting to restore connection"
   }
 };
 
@@ -90,12 +90,15 @@ class ConnectionHistory {
    * @param {number} [maxEntries=50] - Maximum number of history entries to keep
    */
   constructor(maxEntries = 50) {
-    this.logger = createLogger('ConnectionHistory', LogLevel.DEBUG);
+    this.logger = createLogger("ConnectionHistory", LogLevel.DEBUG);
     this.maxEntries = maxEntries;
     this.entries = [];
     this.currentSession = null;
-    
-    this.logger.info('constructor', `Connection history initialized with max entries: ${maxEntries}`);
+
+    this.logger.info(
+      "constructor",
+      `Connection history initialized with max entries: ${maxEntries}`
+    );
   }
 
   /**
@@ -112,35 +115,42 @@ class ConnectionHistory {
       metadata: { ...metadata },
       duration: 0 // Will be calculated when state changes
     };
-    
+
     // Calculate duration of previous state
     if (this.entries.length > 0) {
       const lastEntry = this.entries[this.entries.length - 1];
       lastEntry.duration = entry.timestamp - lastEntry.timestamp;
     }
-    
+
     this.entries.push(entry);
-    
+
     // Maintain size limit
     if (this.entries.length > this.maxEntries) {
       this.entries.shift();
     }
-    
+
     // Track current session
-    if (state === StatusState.CONNECTED || state === StatusState.AUTHENTICATED) {
+    if (
+      state === StatusState.CONNECTED ||
+      state === StatusState.AUTHENTICATED
+    ) {
       this.currentSession = {
         startTime: entry.timestamp,
         initialState: state
       };
-    } else if (state === StatusState.DISCONNECTED || state === StatusState.ERROR) {
+    } else if (
+      state === StatusState.DISCONNECTED ||
+      state === StatusState.ERROR
+    ) {
       if (this.currentSession) {
         this.currentSession.endTime = entry.timestamp;
-        this.currentSession.duration = this.currentSession.endTime - this.currentSession.startTime;
+        this.currentSession.duration =
+          this.currentSession.endTime - this.currentSession.startTime;
         this.currentSession = null;
       }
     }
-    
-    this.logger.debug('recordStateChange', `State change recorded: ${state}`, {
+
+    this.logger.debug("recordStateChange", `State change recorded: ${state}`, {
       reason: reason,
       totalEntries: this.entries.length
     });
@@ -161,49 +171,56 @@ class ConnectionHistory {
         currentSession: this.currentSession
       };
     }
-    
+
     const now = Date.now();
     const firstEntry = this.entries[0];
     const lastEntry = this.entries[this.entries.length - 1];
-    
+
     // Calculate session statistics
     let totalSessions = 0;
     let totalUptime = 0;
     let connectionAttempts = 0;
     let successfulConnections = 0;
-    
+
     for (const entry of this.entries) {
       if (entry.state === StatusState.CONNECTING) {
         connectionAttempts++;
-      } else if (entry.state === StatusState.CONNECTED || entry.state === StatusState.AUTHENTICATED) {
+      } else if (
+        entry.state === StatusState.CONNECTED ||
+        entry.state === StatusState.AUTHENTICATED
+      ) {
         successfulConnections++;
         totalSessions++;
       } else if (entry.state === StatusState.PLAYING && entry.duration > 0) {
         totalUptime += entry.duration;
       }
     }
-    
+
     // Add current session uptime if active
     if (this.currentSession) {
       totalUptime += now - this.currentSession.startTime;
     }
-    
+
     const stats = {
       totalSessions: totalSessions,
       totalUptime: totalUptime,
-      averageSessionDuration: totalSessions > 0 ? totalUptime / totalSessions : 0,
-      connectionSuccessRate: connectionAttempts > 0 ? (successfulConnections / connectionAttempts * 100) : 0,
+      averageSessionDuration:
+        totalSessions > 0 ? totalUptime / totalSessions : 0,
+      connectionSuccessRate:
+        connectionAttempts > 0
+          ? successfulConnections / connectionAttempts * 100
+          : 0,
       lastConnection: lastEntry ? lastEntry.timestamp : null,
       currentSession: this.currentSession,
       historyPeriod: lastEntry.timestamp - firstEntry.timestamp,
       totalStateChanges: this.entries.length
     };
-    
-    this.logger.debug('getStatistics', 'Retrieved connection statistics', {
+
+    this.logger.debug("getStatistics", "Retrieved connection statistics", {
       totalSessions: stats.totalSessions,
       successRate: `${stats.connectionSuccessRate.toFixed(1)}%`
     });
-    
+
     return stats;
   }
 
@@ -217,8 +234,11 @@ class ConnectionHistory {
       ...entry,
       relativeTime: this._formatRelativeTime(Date.now() - entry.timestamp)
     }));
-    
-    this.logger.debug('getRecentHistory', `Retrieved ${recent.length} recent entries`);
+
+    this.logger.debug(
+      "getRecentHistory",
+      `Retrieved ${recent.length} recent entries`
+    );
     return recent;
   }
 
@@ -229,11 +249,14 @@ class ConnectionHistory {
    * @private
    */
   _formatRelativeTime(ms) {
-    if (ms < 60000) { // Less than 1 minute
+    if (ms < 60000) {
+      // Less than 1 minute
       return `${Math.floor(ms / 1000)}s ago`;
-    } else if (ms < 3600000) { // Less than 1 hour
+    } else if (ms < 3600000) {
+      // Less than 1 hour
       return `${Math.floor(ms / 60000)}m ago`;
-    } else if (ms < 86400000) { // Less than 1 day
+    } else if (ms < 86400000) {
+      // Less than 1 day
       return `${Math.floor(ms / 3600000)}h ago`;
     } else {
       return `${Math.floor(ms / 86400000)}d ago`;
@@ -247,8 +270,8 @@ class ConnectionHistory {
     const entriesCleared = this.entries.length;
     this.entries = [];
     this.currentSession = null;
-    
-    this.logger.info('clear', `Cleared ${entriesCleared} history entries`);
+
+    this.logger.info("clear", `Cleared ${entriesCleared} history entries`);
   }
 }
 
@@ -267,28 +290,28 @@ class StatusIndicator {
    * @param {string} [options.size='medium'] - Indicator size (small, medium, large)
    */
   constructor(options = {}) {
-    this.logger = createLogger('StatusIndicator', LogLevel.DEBUG);
-    
+    this.logger = createLogger("StatusIndicator", LogLevel.DEBUG);
+
     this.options = {
       showIcon: options.showIcon !== false,
       showText: options.showText !== false,
       showTooltip: options.showTooltip !== false,
       animate: options.animate !== false,
-      size: options.size || 'medium',
+      size: options.size || "medium",
       ...options
     };
-    
+
     this.element = null;
     this.iconElement = null;
     this.textElement = null;
     this.tooltipElement = null;
-    
+
     this.currentState = StatusState.DISCONNECTED;
     this.animationTimeout = null;
-    
+
     this._createElement();
-    
-    this.logger.debug('constructor', 'Status indicator created', this.options);
+
+    this.logger.debug("constructor", "Status indicator created", this.options);
   }
 
   /**
@@ -296,41 +319,43 @@ class StatusIndicator {
    * @private
    */
   _createElement() {
-    this.element = document.createElement('div');
-    this.element.className = `status-indicator status-indicator--${this.options.size}`;
-    
+    this.element = document.createElement("div");
+    this.element.className = `status-indicator status-indicator--${
+      this.options.size
+    }`;
+
     // Apply base styles
     this._applyBaseStyles();
-    
+
     // Create icon element
     if (this.options.showIcon) {
-      this.iconElement = document.createElement('span');
-      this.iconElement.className = 'status-indicator__icon';
+      this.iconElement = document.createElement("span");
+      this.iconElement.className = "status-indicator__icon";
       this.element.appendChild(this.iconElement);
     }
-    
+
     // Create text element
     if (this.options.showText) {
-      this.textElement = document.createElement('span');
-      this.textElement.className = 'status-indicator__text';
+      this.textElement = document.createElement("span");
+      this.textElement.className = "status-indicator__text";
       this.element.appendChild(this.textElement);
     }
-    
+
     // Create tooltip element
     if (this.options.showTooltip) {
-      this.tooltipElement = document.createElement('div');
-      this.tooltipElement.className = 'status-indicator__tooltip';
+      this.tooltipElement = document.createElement("div");
+      this.tooltipElement.className = "status-indicator__tooltip";
       this.element.appendChild(this.tooltipElement);
-      
+
       // Add hover event listeners for tooltip
-      this.element.addEventListener('mouseenter', () => this._showTooltip());
-      this.element.addEventListener('mouseleave', () => this._hideTooltip());
+      this.element.addEventListener("mouseenter", () => this._showTooltip());
+      this.element.addEventListener("mouseleave", () => this._hideTooltip());
     }
-    
+
     // Set initial state
     this.updateState(this.currentState);
-    
-    this.logger.debug('_createElement', 'DOM element structure created');
+
+    this.logger.debug("_createElement", "DOM element structure created");
   }
 
   /**
@@ -339,70 +364,72 @@ class StatusIndicator {
    */
   _applyBaseStyles() {
     const sizeMap = {
-      small: { padding: '4px 8px', fontSize: '12px' },
-      medium: { padding: '6px 12px', fontSize: '14px' },
-      large: { padding: '8px 16px', fontSize: '16px' }
+      small: { padding: "4px 8px", fontSize: "12px" },
+      medium: { padding: "6px 12px", fontSize: "14px" },
+      large: { padding: "8px 16px", fontSize: "16px" }
     };
-    
+
     const size = sizeMap[this.options.size] || sizeMap.medium;
-    
+
     Object.assign(this.element.style, {
-      display: 'inline-flex',
-      alignItems: 'center',
-      gap: '6px',
+      display: "inline-flex",
+      alignItems: "center",
+      gap: "6px",
       padding: size.padding,
       fontSize: size.fontSize,
-      fontFamily: 'monospace',
-      borderRadius: '4px',
-      border: '1px solid #dee2e6',
-      position: 'relative',
-      cursor: 'default',
-      userSelect: 'none',
-      transition: this.options.animate ? 'all 0.3s ease' : 'none'
+      fontFamily: "monospace",
+      borderRadius: "4px",
+      border: "1px solid #dee2e6",
+      position: "relative",
+      cursor: "default",
+      userSelect: "none",
+      transition: this.options.animate ? "all 0.3s ease" : "none"
     });
-    
+
     // Size-specific icon styles
     if (this.iconElement) {
       Object.assign(this.iconElement.style, {
         fontSize: `${parseInt(size.fontSize) + 2}px`,
-        lineHeight: '1',
-        transition: this.options.animate ? 'transform 0.2s ease' : 'none'
+        lineHeight: "1",
+        transition: this.options.animate ? "transform 0.2s ease" : "none"
       });
     }
-    
+
     // Tooltip styles
     if (this.tooltipElement) {
       Object.assign(this.tooltipElement.style, {
-        position: 'absolute',
-        bottom: '100%',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        marginBottom: '5px',
-        padding: '8px 12px',
-        backgroundColor: '#000',
-        color: '#fff',
-        fontSize: '12px',
-        borderRadius: '4px',
-        whiteSpace: 'nowrap',
-        opacity: '0',
-        visibility: 'hidden',
-        transition: this.options.animate ? 'opacity 0.2s ease, visibility 0.2s ease' : 'none',
-        zIndex: '1000',
-        pointerEvents: 'none'
+        position: "absolute",
+        bottom: "100%",
+        left: "50%",
+        transform: "translateX(-50%)",
+        marginBottom: "5px",
+        padding: "8px 12px",
+        backgroundColor: "#000",
+        color: "#fff",
+        fontSize: "12px",
+        borderRadius: "4px",
+        whiteSpace: "nowrap",
+        opacity: "0",
+        visibility: "hidden",
+        transition: this.options.animate
+          ? "opacity 0.2s ease, visibility 0.2s ease"
+          : "none",
+        zIndex: "1000",
+        pointerEvents: "none"
       });
-      
+
       // Tooltip arrow
-      const arrow = document.createElement('div');
+      const arrow = document.createElement("div");
       Object.assign(arrow.style, {
-        position: 'absolute',
-        top: '100%',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        width: '0',
-        height: '0',
-        borderLeft: '5px solid transparent',
-        borderRight: '5px solid transparent',
-        borderTop: '5px solid #000'
+        position: "absolute",
+        top: "100%",
+        left: "50%",
+        transform: "translateX(-50%)",
+        width: "0",
+        height: "0",
+        borderLeft: "5px solid transparent",
+        borderRight: "5px solid transparent",
+        borderTop: "5px solid #000"
       });
       this.tooltipElement.appendChild(arrow);
     }
@@ -415,33 +442,38 @@ class StatusIndicator {
    */
   updateState(state, metadata = {}) {
     if (!StatusConfig[state]) {
-      this.logger.warn('updateState', `Invalid state: ${state}`);
+      this.logger.warn("updateState", `Invalid state: ${state}`);
       return;
     }
-    
+
     const previousState = this.currentState;
     this.currentState = state;
     const config = StatusConfig[state];
-    
-    this.logger.debug('updateState', `State updated: ${previousState} -> ${state}`);
-    
+
+    this.logger.debug(
+      "updateState",
+      `State updated: ${previousState} -> ${state}`
+    );
+
     // Clear any pending animation
     if (this.animationTimeout) {
       clearTimeout(this.animationTimeout);
       this.animationTimeout = null;
     }
-    
+
     // Apply visual changes
     this._applyStateStyles(config);
     this._updateContent(config, metadata);
-    
+
     // Add state-specific animations
     if (this.options.animate) {
       this._animateStateChange(state, previousState);
     }
-    
+
     // Update CSS class for external styling
-    this.element.className = `status-indicator status-indicator--${this.options.size} status-indicator--${state}`;
+    this.element.className = `status-indicator status-indicator--${
+      this.options.size
+    } status-indicator--${state}`;
   }
 
   /**
@@ -456,13 +488,13 @@ class StatusIndicator {
       backgroundColor: config.backgroundColor,
       borderColor: config.color
     });
-    
+
     // Update icon
     if (this.iconElement) {
       this.iconElement.textContent = config.icon;
       this.iconElement.style.color = config.color;
     }
-    
+
     // Update text
     if (this.textElement) {
       this.textElement.textContent = config.text;
@@ -479,9 +511,9 @@ class StatusIndicator {
     if (!this.tooltipElement) {
       return;
     }
-    
+
     let tooltipContent = config.description;
-    
+
     // Add metadata to tooltip if available
     if (metadata.reason) {
       tooltipContent += `\nReason: ${metadata.reason}`;
@@ -495,7 +527,7 @@ class StatusIndicator {
     if (metadata.uptime !== undefined) {
       tooltipContent += `\nUptime: ${this._formatDuration(metadata.uptime)}`;
     }
-    
+
     this.tooltipElement.firstChild.textContent = tooltipContent;
   }
 
@@ -509,7 +541,7 @@ class StatusIndicator {
     const seconds = Math.floor(ms / 1000);
     const minutes = Math.floor(seconds / 60);
     const hours = Math.floor(minutes / 60);
-    
+
     if (hours > 0) {
       return `${hours}h ${minutes % 60}m`;
     } else if (minutes > 0) {
@@ -527,16 +559,23 @@ class StatusIndicator {
    */
   _animateStateChange(newState, previousState) {
     // Pulse animation for important state changes
-    if ((previousState === StatusState.CONNECTING && newState === StatusState.CONNECTED) ||
-        (previousState === StatusState.RECONNECTING && newState === StatusState.CONNECTED)) {
+    if (
+      (previousState === StatusState.CONNECTING &&
+        newState === StatusState.CONNECTED) ||
+      (previousState === StatusState.RECONNECTING &&
+        newState === StatusState.CONNECTED)
+    ) {
       this._pulseAnimation();
     }
-    
+
     // Rotate icon for connecting/reconnecting states
-    if (newState === StatusState.CONNECTING || newState === StatusState.RECONNECTING) {
+    if (
+      newState === StatusState.CONNECTING ||
+      newState === StatusState.RECONNECTING
+    ) {
       this._rotateAnimation();
     }
-    
+
     // Shake animation for errors
     if (newState === StatusState.ERROR) {
       this._shakeAnimation();
@@ -549,11 +588,11 @@ class StatusIndicator {
    */
   _pulseAnimation() {
     if (!this.iconElement) return;
-    
-    this.iconElement.style.transform = 'scale(1.2)';
+
+    this.iconElement.style.transform = "scale(1.2)";
     this.animationTimeout = setTimeout(() => {
       if (this.iconElement) {
-        this.iconElement.style.transform = 'scale(1)';
+        this.iconElement.style.transform = "scale(1)";
       }
     }, 200);
   }
@@ -564,15 +603,18 @@ class StatusIndicator {
    */
   _rotateAnimation() {
     if (!this.iconElement) return;
-    
+
     let rotation = 0;
     const rotate = () => {
-      if (this.currentState === StatusState.CONNECTING || this.currentState === StatusState.RECONNECTING) {
+      if (
+        this.currentState === StatusState.CONNECTING ||
+        this.currentState === StatusState.RECONNECTING
+      ) {
         rotation = (rotation + 45) % 360;
         this.iconElement.style.transform = `rotate(${rotation}deg)`;
         this.animationTimeout = setTimeout(rotate, 200);
       } else {
-        this.iconElement.style.transform = 'rotate(0deg)';
+        this.iconElement.style.transform = "rotate(0deg)";
       }
     };
     rotate();
@@ -584,13 +626,13 @@ class StatusIndicator {
    */
   _shakeAnimation() {
     if (!this.element) return;
-    
+
     const originalTransform = this.element.style.transform;
     let shakeCount = 0;
-    
+
     const shake = () => {
       if (shakeCount < 6) {
-        const offset = shakeCount % 2 === 0 ? '2px' : '-2px';
+        const offset = shakeCount % 2 === 0 ? "2px" : "-2px";
         this.element.style.transform = `translateX(${offset})`;
         shakeCount++;
         this.animationTimeout = setTimeout(shake, 50);
@@ -607,8 +649,8 @@ class StatusIndicator {
    */
   _showTooltip() {
     if (this.tooltipElement) {
-      this.tooltipElement.style.opacity = '1';
-      this.tooltipElement.style.visibility = 'visible';
+      this.tooltipElement.style.opacity = "1";
+      this.tooltipElement.style.visibility = "visible";
     }
   }
 
@@ -618,8 +660,8 @@ class StatusIndicator {
    */
   _hideTooltip() {
     if (this.tooltipElement) {
-      this.tooltipElement.style.opacity = '0';
-      this.tooltipElement.style.visibility = 'hidden';
+      this.tooltipElement.style.opacity = "0";
+      this.tooltipElement.style.visibility = "hidden";
     }
   }
 
@@ -639,17 +681,17 @@ class StatusIndicator {
       clearTimeout(this.animationTimeout);
       this.animationTimeout = null;
     }
-    
+
     if (this.element && this.element.parentNode) {
       this.element.parentNode.removeChild(this.element);
     }
-    
+
     this.element = null;
     this.iconElement = null;
     this.textElement = null;
     this.tooltipElement = null;
-    
-    this.logger.debug('destroy', 'Status indicator destroyed');
+
+    this.logger.debug("destroy", "Status indicator destroyed");
   }
 }
 
@@ -668,32 +710,32 @@ class ConnectionStatus {
    * @param {number} [options.updateInterval=1000] - Update interval for statistics in milliseconds
    */
   constructor(options = {}) {
-    this.logger = createLogger('ConnectionStatus', LogLevel.INFO);
-    
+    this.logger = createLogger("ConnectionStatus", LogLevel.INFO);
+
     this.options = {
       showHistory: options.showHistory === true,
       showStatistics: options.showStatistics === true,
       updateInterval: options.updateInterval || 1000,
       ...options
     };
-    
+
     this.container = options.container || null;
     this.indicator = new StatusIndicator(options.indicator);
     this.history = new ConnectionHistory();
-    
+
     // DOM elements
     this.element = null;
     this.historyElement = null;
     this.statisticsElement = null;
-    
+
     // Update management
     this.updateTimer = null;
     this.lastUpdateTime = 0;
-    
+
     this._createElement();
     this._startUpdates();
-    
-    this.logger.info('constructor', 'Connection status component initialized', {
+
+    this.logger.info("constructor", "Connection status component initialized", {
       showHistory: this.options.showHistory,
       showStatistics: this.options.showStatistics
     });
@@ -704,64 +746,64 @@ class ConnectionStatus {
    * @private
    */
   _createElement() {
-    this.element = document.createElement('div');
-    this.element.className = 'connection-status';
-    
+    this.element = document.createElement("div");
+    this.element.className = "connection-status";
+
     // Apply base styles
     Object.assign(this.element.style, {
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '8px',
-      padding: '8px',
-      backgroundColor: '#f8f9fa',
-      border: '1px solid #dee2e6',
-      borderRadius: '4px',
-      fontFamily: 'monospace',
-      fontSize: '12px'
+      display: "flex",
+      flexDirection: "column",
+      gap: "8px",
+      padding: "8px",
+      backgroundColor: "#f8f9fa",
+      border: "1px solid #dee2e6",
+      borderRadius: "4px",
+      fontFamily: "monospace",
+      fontSize: "12px"
     });
-    
+
     // Add main indicator
-    const indicatorContainer = document.createElement('div');
-    indicatorContainer.className = 'connection-status__indicator';
+    const indicatorContainer = document.createElement("div");
+    indicatorContainer.className = "connection-status__indicator";
     indicatorContainer.appendChild(this.indicator.getElement());
     this.element.appendChild(indicatorContainer);
-    
+
     // Add statistics section if enabled
     if (this.options.showStatistics) {
-      this.statisticsElement = document.createElement('div');
-      this.statisticsElement.className = 'connection-status__statistics';
+      this.statisticsElement = document.createElement("div");
+      this.statisticsElement.className = "connection-status__statistics";
       Object.assign(this.statisticsElement.style, {
-        fontSize: '11px',
-        color: '#6c757d',
-        borderTop: '1px solid #dee2e6',
-        paddingTop: '8px',
-        marginTop: '4px'
+        fontSize: "11px",
+        color: "#6c757d",
+        borderTop: "1px solid #dee2e6",
+        paddingTop: "8px",
+        marginTop: "4px"
       });
       this.element.appendChild(this.statisticsElement);
     }
-    
+
     // Add history section if enabled
     if (this.options.showHistory) {
-      this.historyElement = document.createElement('div');
-      this.historyElement.className = 'connection-status__history';
+      this.historyElement = document.createElement("div");
+      this.historyElement.className = "connection-status__history";
       Object.assign(this.historyElement.style, {
-        fontSize: '11px',
-        color: '#6c757d',
-        borderTop: '1px solid #dee2e6',
-        paddingTop: '8px',
-        marginTop: '4px',
-        maxHeight: '120px',
-        overflowY: 'auto'
+        fontSize: "11px",
+        color: "#6c757d",
+        borderTop: "1px solid #dee2e6",
+        paddingTop: "8px",
+        marginTop: "4px",
+        maxHeight: "120px",
+        overflowY: "auto"
       });
       this.element.appendChild(this.historyElement);
     }
-    
+
     // Add to container if provided
     if (this.container) {
       this.container.appendChild(this.element);
     }
-    
-    this.logger.debug('_createElement', 'Component DOM structure created');
+
+    this.logger.debug("_createElement", "Component DOM structure created");
   }
 
   /**
@@ -773,8 +815,13 @@ class ConnectionStatus {
       this.updateTimer = setInterval(() => {
         this._updateDisplay();
       }, this.options.updateInterval);
-      
-      this.logger.debug('_startUpdates', `Periodic updates started with ${this.options.updateInterval}ms interval`);
+
+      this.logger.debug(
+        "_startUpdates",
+        `Periodic updates started with ${
+          this.options.updateInterval
+        }ms interval`
+      );
     }
   }
 
@@ -785,17 +832,20 @@ class ConnectionStatus {
    * @param {Object} [metadata] - Additional metadata about the connection
    */
   updateStatus(state, reason = null, metadata = {}) {
-    this.logger.debug('updateStatus', `Status update: ${state}`, { reason, metadata });
-    
+    this.logger.debug("updateStatus", `Status update: ${state}`, {
+      reason,
+      metadata
+    });
+
     // Update indicator
     this.indicator.updateState(state, metadata);
-    
+
     // Record in history
     this.history.recordStateChange(state, reason, metadata);
-    
+
     // Update display elements
     this._updateDisplay();
-    
+
     this.lastUpdateTime = Date.now();
   }
 
@@ -807,7 +857,7 @@ class ConnectionStatus {
     if (this.statisticsElement) {
       this._updateStatistics();
     }
-    
+
     if (this.historyElement) {
       this._updateHistory();
     }
@@ -819,16 +869,24 @@ class ConnectionStatus {
    */
   _updateStatistics() {
     const stats = this.history.getStatistics();
-    
+
     const statisticsHTML = `
       <div><strong>Connection Statistics</strong></div>
       <div>Sessions: ${stats.totalSessions}</div>
       <div>Success Rate: ${stats.connectionSuccessRate.toFixed(1)}%</div>
       <div>Total Uptime: ${this._formatDuration(stats.totalUptime)}</div>
-      ${stats.currentSession ? `<div>Current Session: ${this._formatDuration(Date.now() - stats.currentSession.startTime)}</div>` : ''}
-      <div>Last Update: ${new Date(this.lastUpdateTime).toLocaleTimeString()}</div>
+      ${
+        stats.currentSession
+          ? `<div>Current Session: ${this._formatDuration(
+              Date.now() - stats.currentSession.startTime
+            )}</div>`
+          : ""
+      }
+      <div>Last Update: ${new Date(
+        this.lastUpdateTime
+      ).toLocaleTimeString()}</div>
     `;
-    
+
     this.statisticsElement.innerHTML = statisticsHTML;
   }
 
@@ -838,23 +896,28 @@ class ConnectionStatus {
    */
   _updateHistory() {
     const recentHistory = this.history.getRecentHistory(5);
-    
+
     if (recentHistory.length === 0) {
-      this.historyElement.innerHTML = '<div><strong>Connection History</strong></div><div>No history available</div>';
+      this.historyElement.innerHTML =
+        "<div><strong>Connection History</strong></div><div>No history available</div>";
       return;
     }
-    
-    const historyHTML = recentHistory.map(entry => {
-      const config = StatusConfig[entry.state] || {};
-      return `
-        <div style="margin: 2px 0; padding: 2px 4px; background: ${config.backgroundColor || '#f8f9fa'}; border-radius: 2px;">
-          <span style="color: ${config.color || '#000'};">${config.icon || '●'}</span>
+
+    const historyHTML = recentHistory
+      .map(entry => {
+        const config = StatusConfig[entry.state] || {};
+        return `
+        <div style="margin: 2px 0; padding: 2px 4px; background: ${config.backgroundColor ||
+          "#f8f9fa"}; border-radius: 2px;">
+          <span style="color: ${config.color || "#000"};">${config.icon ||
+          "●"}</span>
           ${config.text || entry.state} - ${entry.relativeTime}
-          ${entry.reason ? ` (${entry.reason})` : ''}
+          ${entry.reason ? ` (${entry.reason})` : ""}
         </div>
       `;
-    }).join('');
-    
+      })
+      .join("");
+
     this.historyElement.innerHTML = `
       <div><strong>Recent History</strong></div>
       ${historyHTML}
@@ -873,7 +936,9 @@ class ConnectionStatus {
     } else if (ms < 3600000) {
       return `${Math.floor(ms / 60000)}m ${Math.floor((ms % 60000) / 1000)}s`;
     } else {
-      return `${Math.floor(ms / 3600000)}h ${Math.floor((ms % 3600000) / 60000)}m`;
+      return `${Math.floor(ms / 3600000)}h ${Math.floor(
+        (ms % 3600000) / 60000
+      )}m`;
     }
   }
 
@@ -902,8 +967,8 @@ class ConnectionStatus {
    * Clears connection history and resets statistics
    */
   reset() {
-    this.logger.info('reset', 'Resetting connection status component');
-    
+    this.logger.info("reset", "Resetting connection status component");
+
     this.history.clear();
     this.indicator.updateState(StatusState.DISCONNECTED);
     this.lastUpdateTime = Date.now();
@@ -914,39 +979,41 @@ class ConnectionStatus {
    * Destroys the component and cleans up resources
    */
   destroy() {
-    this.logger.enter('destroy');
-    
+    this.logger.enter("destroy");
+
     // Stop updates
     if (this.updateTimer) {
       clearInterval(this.updateTimer);
       this.updateTimer = null;
     }
-    
+
     // Destroy indicator
     this.indicator.destroy();
-    
+
     // Remove from DOM
     if (this.element && this.element.parentNode) {
       this.element.parentNode.removeChild(this.element);
     }
-    
+
     // Clear references
     this.element = null;
     this.historyElement = null;
     this.statisticsElement = null;
     this.container = null;
-    
-    this.logger.info('destroy', 'Connection status component destroyed');
+
+    this.logger.info("destroy", "Connection status component destroyed");
   }
 }
 
 // Export public interface
-export { 
-  ConnectionStatus, 
-  StatusIndicator, 
+export {
+  ConnectionStatus,
+  StatusIndicator,
   ConnectionHistory,
   StatusState,
-  StatusConfig 
+  StatusConfig
 };
 
-console.log('[ConnectionStatus] Connection status component module loaded successfully');
+console.log(
+  "[ConnectionStatus] Connection status component module loaded successfully"
+);

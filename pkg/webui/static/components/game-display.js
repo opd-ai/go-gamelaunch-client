@@ -8,9 +8,12 @@
  * @version 1.0.0
  */
 
-import { createLogger, LogLevel } from '../utils/logger.js';
-import { GameClient, ConnectionState } from '../services/game-client.js';
-import { ConnectionStatus, StatusState } from '../components/connection-status.js';
+import { createLogger, LogLevel } from "../utils/logger.js";
+import { GameClient, ConnectionState } from "../services/game-client.js";
+import {
+  ConnectionStatus,
+  StatusState
+} from "../components/connection-status.js";
 
 /**
  * @enum {string}
@@ -18,9 +21,9 @@ import { ConnectionStatus, StatusState } from '../components/connection-status.j
  * @description Display rendering modes for game content
  */
 const RenderMode = {
-  TEXT: 'text',
-  TILESET: 'tileset',
-  HYBRID: 'hybrid'
+  TEXT: "text",
+  TILESET: "tileset",
+  HYBRID: "hybrid"
 };
 
 /**
@@ -29,9 +32,9 @@ const RenderMode = {
  * @description Font rendering styles for terminal display
  */
 const FontStyle = {
-  MONOSPACE: 'monospace',
-  BITMAP: 'bitmap',
-  VECTOR: 'vector'
+  MONOSPACE: "monospace",
+  BITMAP: "bitmap",
+  VECTOR: "vector"
 };
 
 /**
@@ -49,8 +52,8 @@ class ViewportManager {
    * @param {boolean} [options.autoResize=true] - Whether to auto-resize to fit content
    */
   constructor(canvas, options = {}) {
-    this.logger = createLogger('ViewportManager', LogLevel.DEBUG);
-    
+    this.logger = createLogger("ViewportManager", LogLevel.DEBUG);
+
     this.canvas = canvas;
     this.options = {
       minScale: options.minScale || 0.5,
@@ -59,29 +62,29 @@ class ViewportManager {
       autoResize: options.autoResize !== false,
       ...options
     };
-    
+
     // Viewport state
     this.scale = 1.0;
     this.offsetX = 0;
     this.offsetY = 0;
     this.viewportWidth = 0;
     this.viewportHeight = 0;
-    
+
     // Content dimensions
     this.contentWidth = 0;
     this.contentHeight = 0;
     this.cellWidth = 12;
     this.cellHeight = 16;
-    
+
     // Event handling
     this.isDragging = false;
     this.lastMouseX = 0;
     this.lastMouseY = 0;
-    
+
     this._setupEventListeners();
     this._updateViewport();
-    
-    this.logger.info('constructor', 'Viewport manager initialized', {
+
+    this.logger.info("constructor", "Viewport manager initialized", {
       allowScroll: this.options.allowScroll,
       autoResize: this.options.autoResize
     });
@@ -93,44 +96,52 @@ class ViewportManager {
    */
   _setupEventListeners() {
     // Mouse wheel for zooming
-    this.canvas.addEventListener('wheel', (event) => {
-      if (event.ctrlKey) {
-        event.preventDefault();
-        this._handleZoom(event);
-      } else if (this.options.allowScroll) {
-        event.preventDefault();
-        this._handleScroll(event);
-      }
-    }, { passive: false });
-    
+    this.canvas.addEventListener(
+      "wheel",
+      event => {
+        if (event.ctrlKey) {
+          event.preventDefault();
+          this._handleZoom(event);
+        } else if (this.options.allowScroll) {
+          event.preventDefault();
+          this._handleScroll(event);
+        }
+      },
+      { passive: false }
+    );
+
     // Mouse drag for panning
-    this.canvas.addEventListener('mousedown', (event) => {
-      if (event.button === 1 || (event.button === 0 && event.ctrlKey)) { // Middle mouse or Ctrl+left
+    this.canvas.addEventListener("mousedown", event => {
+      if (event.button === 1 || (event.button === 0 && event.ctrlKey)) {
+        // Middle mouse or Ctrl+left
         event.preventDefault();
         this._startDrag(event);
       }
     });
-    
-    this.canvas.addEventListener('mousemove', (event) => {
+
+    this.canvas.addEventListener("mousemove", event => {
       if (this.isDragging) {
         event.preventDefault();
         this._handleDrag(event);
       }
     });
-    
-    this.canvas.addEventListener('mouseup', (event) => {
+
+    this.canvas.addEventListener("mouseup", event => {
       if (this.isDragging) {
         event.preventDefault();
         this._endDrag(event);
       }
     });
-    
+
     // Window resize handling
-    window.addEventListener('resize', () => {
+    window.addEventListener("resize", () => {
       this._updateViewport();
     });
-    
-    this.logger.debug('_setupEventListeners', 'Viewport event listeners attached');
+
+    this.logger.debug(
+      "_setupEventListeners",
+      "Viewport event listeners attached"
+    );
   }
 
   /**
@@ -140,17 +151,19 @@ class ViewportManager {
    */
   _handleZoom(event) {
     const zoomFactor = event.deltaY > 0 ? 0.9 : 1.1;
-    const newScale = Math.max(this.options.minScale, 
-                             Math.min(this.options.maxScale, this.scale * zoomFactor));
-    
+    const newScale = Math.max(
+      this.options.minScale,
+      Math.min(this.options.maxScale, this.scale * zoomFactor)
+    );
+
     if (newScale !== this.scale) {
       // Zoom towards mouse position
       const rect = this.canvas.getBoundingClientRect();
       const mouseX = event.clientX - rect.left;
       const mouseY = event.clientY - rect.top;
-      
+
       this._setScale(newScale, mouseX, mouseY);
-      this.logger.debug('_handleZoom', `Zoom: ${this.scale.toFixed(2)}x`);
+      this.logger.debug("_handleZoom", `Zoom: ${this.scale.toFixed(2)}x`);
     }
   }
 
@@ -175,7 +188,7 @@ class ViewportManager {
     this.isDragging = true;
     this.lastMouseX = event.clientX;
     this.lastMouseY = event.clientY;
-    this.canvas.style.cursor = 'grabbing';
+    this.canvas.style.cursor = "grabbing";
   }
 
   /**
@@ -185,14 +198,14 @@ class ViewportManager {
    */
   _handleDrag(event) {
     if (!this.isDragging) return;
-    
+
     const deltaX = event.clientX - this.lastMouseX;
     const deltaY = event.clientY - this.lastMouseY;
-    
+
     this.offsetX += deltaX / this.scale;
     this.offsetY += deltaY / this.scale;
     this._constrainOffset();
-    
+
     this.lastMouseX = event.clientX;
     this.lastMouseY = event.clientY;
   }
@@ -204,7 +217,7 @@ class ViewportManager {
    */
   _endDrag(event) {
     this.isDragging = false;
-    this.canvas.style.cursor = 'default';
+    this.canvas.style.cursor = "default";
   }
 
   /**
@@ -218,10 +231,12 @@ class ViewportManager {
     if (focusX !== undefined && focusY !== undefined) {
       // Adjust offset to zoom towards focus point
       const scaleDelta = newScale / this.scale;
-      this.offsetX = focusX / newScale - (focusX / this.scale - this.offsetX) * scaleDelta;
-      this.offsetY = focusY / newScale - (focusY / this.scale - this.offsetY) * scaleDelta;
+      this.offsetX =
+        focusX / newScale - (focusX / this.scale - this.offsetX) * scaleDelta;
+      this.offsetY =
+        focusY / newScale - (focusY / this.scale - this.offsetY) * scaleDelta;
     }
-    
+
     this.scale = newScale;
     this._constrainOffset();
   }
@@ -231,9 +246,15 @@ class ViewportManager {
    * @private
    */
   _constrainOffset() {
-    const maxOffsetX = Math.max(0, this.contentWidth - this.viewportWidth / this.scale);
-    const maxOffsetY = Math.max(0, this.contentHeight - this.viewportHeight / this.scale);
-    
+    const maxOffsetX = Math.max(
+      0,
+      this.contentWidth - this.viewportWidth / this.scale
+    );
+    const maxOffsetY = Math.max(
+      0,
+      this.contentHeight - this.viewportHeight / this.scale
+    );
+
     this.offsetX = Math.max(0, Math.min(maxOffsetX, this.offsetX));
     this.offsetY = Math.max(0, Math.min(maxOffsetY, this.offsetY));
   }
@@ -246,11 +267,15 @@ class ViewportManager {
     const rect = this.canvas.getBoundingClientRect();
     this.viewportWidth = rect.width;
     this.viewportHeight = rect.height;
-    
-    if (this.options.autoResize && this.contentWidth > 0 && this.contentHeight > 0) {
+
+    if (
+      this.options.autoResize &&
+      this.contentWidth > 0 &&
+      this.contentHeight > 0
+    ) {
       this._autoFitContent();
     }
-    
+
     this._constrainOffset();
   }
 
@@ -262,11 +287,20 @@ class ViewportManager {
     const scaleX = this.viewportWidth / this.contentWidth;
     const scaleY = this.viewportHeight / this.contentHeight;
     const autoScale = Math.min(scaleX, scaleY);
-    
-    if (autoScale >= this.options.minScale && autoScale <= this.options.maxScale) {
+
+    if (
+      autoScale >= this.options.minScale &&
+      autoScale <= this.options.maxScale
+    ) {
       this.scale = autoScale;
-      this.offsetX = Math.max(0, (this.contentWidth - this.viewportWidth / this.scale) / 2);
-      this.offsetY = Math.max(0, (this.contentHeight - this.viewportHeight / this.scale) / 2);
+      this.offsetX = Math.max(
+        0,
+        (this.contentWidth - this.viewportWidth / this.scale) / 2
+      );
+      this.offsetY = Math.max(
+        0,
+        (this.contentHeight - this.viewportHeight / this.scale) / 2
+      );
     }
   }
 
@@ -280,13 +314,13 @@ class ViewportManager {
   updateContent(width, height, cellWidth, cellHeight) {
     this.contentWidth = width;
     this.contentHeight = height;
-    
+
     if (cellWidth !== undefined) this.cellWidth = cellWidth;
     if (cellHeight !== undefined) this.cellHeight = cellHeight;
-    
+
     this._updateViewport();
-    
-    this.logger.debug('updateContent', `Content updated: ${width}x${height}`);
+
+    this.logger.debug("updateContent", `Content updated: ${width}x${height}`);
   }
 
   /**
@@ -299,10 +333,10 @@ class ViewportManager {
     const rect = this.canvas.getBoundingClientRect();
     const canvasX = screenX - rect.left;
     const canvasY = screenY - rect.top;
-    
+
     return {
-      x: (canvasX / this.scale) + this.offsetX,
-      y: (canvasY / this.scale) + this.offsetY
+      x: canvasX / this.scale + this.offsetX,
+      y: canvasY / this.scale + this.offsetY
     };
   }
 
@@ -341,8 +375,8 @@ class ViewportManager {
     this.offsetX = 0;
     this.offsetY = 0;
     this._updateViewport();
-    
-    this.logger.debug('reset', 'Viewport reset to defaults');
+
+    this.logger.debug("reset", "Viewport reset to defaults");
   }
 }
 
@@ -362,25 +396,25 @@ class TerminalRenderer {
    * @param {boolean} [options.antialiasing=false] - Whether to enable font antialiasing
    */
   constructor(canvas, options = {}) {
-    this.logger = createLogger('TerminalRenderer', LogLevel.DEBUG);
-    
+    this.logger = createLogger("TerminalRenderer", LogLevel.DEBUG);
+
     this.canvas = canvas;
-    this.context = canvas.getContext('2d');
+    this.context = canvas.getContext("2d");
     this.options = {
       mode: options.mode || RenderMode.TEXT,
       fontStyle: options.fontStyle || FontStyle.MONOSPACE,
       fontSize: options.fontSize || 14,
-      fontFamily: options.fontFamily || 'Consolas, Monaco, monospace',
+      fontFamily: options.fontFamily || "Consolas, Monaco, monospace",
       antialiasing: options.antialiasing === true,
       ...options
     };
-    
+
     // Rendering state
     this.cellWidth = 0;
     this.cellHeight = 0;
     this.currentTileset = null;
     this.fontMetrics = null;
-    
+
     // Performance tracking
     this.frameCount = 0;
     this.lastFrameTime = 0;
@@ -390,10 +424,10 @@ class TerminalRenderer {
       tilesUsed: 0,
       textChars: 0
     };
-    
+
     this._initializeRenderer();
-    
-    this.logger.info('constructor', 'Terminal renderer initialized', {
+
+    this.logger.info("constructor", "Terminal renderer initialized", {
       mode: this.options.mode,
       fontSize: this.options.fontSize
     });
@@ -406,14 +440,18 @@ class TerminalRenderer {
   _initializeRenderer() {
     // Configure canvas context
     this.context.imageSmoothingEnabled = this.options.antialiasing;
-    this.context.textBaseline = 'top';
-    
+    this.context.textBaseline = "top";
+
     // Calculate font metrics
     this._calculateFontMetrics();
-    
-    this.logger.debug('_initializeRenderer', 'Renderer initialization complete', {
-      cellSize: `${this.cellWidth}x${this.cellHeight}`
-    });
+
+    this.logger.debug(
+      "_initializeRenderer",
+      "Renderer initialization complete",
+      {
+        cellSize: `${this.cellWidth}x${this.cellHeight}`
+      }
+    );
   }
 
   /**
@@ -423,20 +461,24 @@ class TerminalRenderer {
   _calculateFontMetrics() {
     const font = `${this.options.fontSize}px ${this.options.fontFamily}`;
     this.context.font = font;
-    
+
     // Measure character dimensions using a representative character
-    const metrics = this.context.measureText('M');
+    const metrics = this.context.measureText("M");
     this.cellWidth = Math.ceil(metrics.width);
     this.cellHeight = Math.ceil(this.options.fontSize * 1.2); // Add line spacing
-    
+
     this.fontMetrics = {
       font: font,
       width: this.cellWidth,
       height: this.cellHeight,
       baseline: Math.ceil(this.options.fontSize * 0.1)
     };
-    
-    this.logger.debug('_calculateFontMetrics', 'Font metrics calculated', this.fontMetrics);
+
+    this.logger.debug(
+      "_calculateFontMetrics",
+      "Font metrics calculated",
+      this.fontMetrics
+    );
   }
 
   /**
@@ -445,17 +487,17 @@ class TerminalRenderer {
    */
   setTileset(tileset) {
     this.currentTileset = tileset;
-    
+
     if (tileset && tileset.imageLoaded) {
       // Update cell dimensions based on tileset
       this.cellWidth = tileset.tile_width;
       this.cellHeight = tileset.tile_height;
-      
-      this.logger.info('setTileset', `Tileset configured: ${tileset.name}`, {
+
+      this.logger.info("setTileset", `Tileset configured: ${tileset.name}`, {
         tileSize: `${this.cellWidth}x${this.cellHeight}`
       });
     } else {
-      this.logger.warn('setTileset', 'Invalid or unloaded tileset provided');
+      this.logger.warn("setTileset", "Invalid or unloaded tileset provided");
     }
   }
 
@@ -466,46 +508,49 @@ class TerminalRenderer {
    */
   render(gameState, transform = null) {
     if (!gameState) {
-      this.logger.warn('render', 'No game state provided for rendering');
+      this.logger.warn("render", "No game state provided for rendering");
       return;
     }
-    
+
     const startTime = performance.now();
     this.frameCount++;
-    
+
     // Reset render statistics
     this.renderStats = { cellsRendered: 0, tilesUsed: 0, textChars: 0 };
-    
+
     try {
       // Apply viewport transformation if provided
       if (transform) {
         this._applyTransform(transform);
       }
-      
+
       // Clear canvas
       this._clearCanvas(gameState);
-      
+
       // Render game content based on current mode
       this._renderGameContent(gameState);
-      
+
       // Render cursor if visible
       if (gameState.cursor && gameState.cursor.visible) {
         this._renderCursor(gameState);
       }
-      
+
       // Restore transformation
       if (transform) {
         this.context.restore();
       }
-      
+
       // Update performance metrics
       const frameTime = performance.now() - startTime;
       this._updatePerformanceMetrics(frameTime);
-      
-      this.logger.debug('render', `Frame rendered in ${frameTime.toFixed(2)}ms`, this.renderStats);
-      
+
+      this.logger.debug(
+        "render",
+        `Frame rendered in ${frameTime.toFixed(2)}ms`,
+        this.renderStats
+      );
     } catch (error) {
-      this.logger.error('render', 'Rendering failed', error);
+      this.logger.error("render", "Rendering failed", error);
     }
   }
 
@@ -526,7 +571,7 @@ class TerminalRenderer {
    * @private
    */
   _clearCanvas(gameState) {
-    this.context.fillStyle = '#000000'; // Default background
+    this.context.fillStyle = "#000000"; // Default background
     this.context.fillRect(0, 0, this.canvas.width, this.canvas.height);
   }
 
@@ -540,11 +585,14 @@ class TerminalRenderer {
     if (!buffer || !buffer.length) {
       return;
     }
-    
+
     // Determine rendering approach based on mode and available resources
-    const useTileset = (this.options.mode === RenderMode.TILESET || this.options.mode === RenderMode.HYBRID) &&
-                      this.currentTileset && this.currentTileset.imageLoaded;
-    
+    const useTileset =
+      (this.options.mode === RenderMode.TILESET ||
+        this.options.mode === RenderMode.HYBRID) &&
+      this.currentTileset &&
+      this.currentTileset.imageLoaded;
+
     for (let y = 0; y < gameState.height; y++) {
       for (let x = 0; x < gameState.width; x++) {
         const cell = gameState.getCell(x, y);
@@ -567,12 +615,12 @@ class TerminalRenderer {
   _renderCell(x, y, cell, useTileset) {
     const pixelX = x * this.cellWidth;
     const pixelY = y * this.cellHeight;
-    
+
     // Render background if not default
-    if (cell.bg_color && cell.bg_color !== '#000000') {
+    if (cell.bg_color && cell.bg_color !== "#000000") {
       this._renderCellBackground(pixelX, pixelY, cell.bg_color);
     }
-    
+
     // Choose rendering method
     if (useTileset && cell.hasTileCoordinates()) {
       const rendered = this._renderTilesetCell(pixelX, pixelY, cell);
@@ -581,7 +629,7 @@ class TerminalRenderer {
         return;
       }
     }
-    
+
     // Fall back to text rendering
     this._renderTextCell(pixelX, pixelY, cell);
     this.renderStats.textChars++;
@@ -611,27 +659,37 @@ class TerminalRenderer {
     if (!this.currentTileset || !this.currentTileset.imageLoaded) {
       return false;
     }
-    
+
     const sprite = this.currentTileset.getSprite(cell.tile_x, cell.tile_y);
     if (!sprite) {
       return false;
     }
-    
+
     try {
       const sourceCoords = sprite.getPixelCoordinates(
-        this.currentTileset.tile_width, 
+        this.currentTileset.tile_width,
         this.currentTileset.tile_height
       );
-      
+
       this.context.drawImage(
         this.currentTileset.imageElement,
-        sourceCoords.x, sourceCoords.y, sourceCoords.width, sourceCoords.height,
-        x, y, this.cellWidth, this.cellHeight
+        sourceCoords.x,
+        sourceCoords.y,
+        sourceCoords.width,
+        sourceCoords.height,
+        x,
+        y,
+        this.cellWidth,
+        this.cellHeight
       );
-      
+
       return true;
     } catch (error) {
-      this.logger.warn('_renderTilesetCell', 'Tileset rendering failed, falling back to text', error);
+      this.logger.warn(
+        "_renderTilesetCell",
+        "Tileset rendering failed, falling back to text",
+        error
+      );
       return false;
     }
   }
@@ -645,34 +703,34 @@ class TerminalRenderer {
    */
   _renderTextCell(x, y, cell) {
     const char = cell.getDisplayChar();
-    if (!char || char === ' ') {
+    if (!char || char === " ") {
       return;
     }
-    
+
     // Set text properties
-    this.context.fillStyle = cell.fg_color || '#FFFFFF';
+    this.context.fillStyle = cell.fg_color || "#FFFFFF";
     this.context.font = this.fontMetrics.font;
-    
+
     // Apply text styling
     let font = this.fontMetrics.font;
     if (cell.bold) {
-      font = 'bold ' + font;
+      font = "bold " + font;
       this.context.font = font;
     }
-    
+
     // Handle inverse video
     if (cell.inverse) {
-      this._renderCellBackground(x, y, cell.fg_color || '#FFFFFF');
-      this.context.fillStyle = cell.bg_color || '#000000';
+      this._renderCellBackground(x, y, cell.fg_color || "#FFFFFF");
+      this.context.fillStyle = cell.bg_color || "#000000";
     }
-    
+
     // Center character in cell
     const textMetrics = this.context.measureText(char);
     const textX = x + (this.cellWidth - textMetrics.width) / 2;
     const textY = y + this.fontMetrics.baseline;
-    
+
     this.context.fillText(char, textX, textY);
-    
+
     // Handle blinking text (simple implementation)
     if (cell.blink && Math.floor(Date.now() / 500) % 2 === 0) {
       this.context.globalAlpha = 0.5;
@@ -690,15 +748,20 @@ class TerminalRenderer {
     const cursor = gameState.cursor;
     const x = cursor.x * this.cellWidth;
     const y = cursor.y * this.cellHeight;
-    
+
     // Render cursor as animated outline
     const alpha = 0.5 + 0.5 * Math.sin(Date.now() / 300); // Pulsing effect
-    
+
     this.context.save();
     this.context.globalAlpha = alpha;
-    this.context.strokeStyle = '#FFFFFF';
+    this.context.strokeStyle = "#FFFFFF";
     this.context.lineWidth = 2;
-    this.context.strokeRect(x + 1, y + 1, this.cellWidth - 2, this.cellHeight - 2);
+    this.context.strokeRect(
+      x + 1,
+      y + 1,
+      this.cellWidth - 2,
+      this.cellHeight - 2
+    );
     this.context.restore();
   }
 
@@ -709,10 +772,11 @@ class TerminalRenderer {
    */
   _updatePerformanceMetrics(frameTime) {
     this.lastFrameTime = frameTime;
-    
+
     // Calculate rolling average frame time
     const alpha = 0.1; // Smoothing factor
-    this.averageFrameTime = this.averageFrameTime * (1 - alpha) + frameTime * alpha;
+    this.averageFrameTime =
+      this.averageFrameTime * (1 - alpha) + frameTime * alpha;
   }
 
   /**
@@ -738,9 +802,9 @@ class TerminalRenderer {
   setRenderMode(mode) {
     if (Object.values(RenderMode).includes(mode)) {
       this.options.mode = mode;
-      this.logger.info('setRenderMode', `Rendering mode changed to: ${mode}`);
+      this.logger.info("setRenderMode", `Rendering mode changed to: ${mode}`);
     } else {
-      this.logger.warn('setRenderMode', `Invalid rendering mode: ${mode}`);
+      this.logger.warn("setRenderMode", `Invalid rendering mode: ${mode}`);
     }
   }
 
@@ -756,9 +820,9 @@ class TerminalRenderer {
     if (fontFamily !== undefined) {
       this.options.fontFamily = fontFamily;
     }
-    
+
     this._calculateFontMetrics();
-    this.logger.info('updateFont', 'Font updated', {
+    this.logger.info("updateFont", "Font updated", {
       fontSize: this.options.fontSize,
       fontFamily: this.options.fontFamily
     });
@@ -792,36 +856,36 @@ class GameDisplay {
    * @param {boolean} [options.showPerformanceStats=false] - Whether to show performance statistics
    */
   constructor(container, options = {}) {
-    this.logger = createLogger('GameDisplay', LogLevel.INFO);
-    
+    this.logger = createLogger("GameDisplay", LogLevel.INFO);
+
     this.container = container;
     this.options = {
       showConnectionStatus: options.showConnectionStatus !== false,
       showPerformanceStats: options.showPerformanceStats === true,
       ...options
     };
-    
+
     // Core components
     this.canvas = null;
     this.gameClient = null;
     this.renderer = null;
     this.viewport = null;
     this.connectionStatus = null;
-    
+
     // UI elements
     this.statusContainer = null;
     this.performanceDisplay = null;
-    
+
     // State management
     this.initialized = false;
     this.isRendering = false;
     this.animationFrame = null;
-    
+
     this._createElement();
     this._initializeComponents();
     this._setupEventHandlers();
-    
-    this.logger.info('constructor', 'Game display component created', {
+
+    this.logger.info("constructor", "Game display component created", {
       showConnectionStatus: this.options.showConnectionStatus,
       showPerformanceStats: this.options.showPerformanceStats
     });
@@ -832,54 +896,57 @@ class GameDisplay {
    * @private
    */
   _createElement() {
-    this.container.className = 'game-display';
-    
+    this.container.className = "game-display";
+
     // Apply base container styles
     Object.assign(this.container.style, {
-      position: 'relative',
-      display: 'flex',
-      flexDirection: 'column',
-      width: '100%',
-      height: '100%',
-      backgroundColor: '#000000',
-      overflow: 'hidden'
+      position: "relative",
+      display: "flex",
+      flexDirection: "column",
+      width: "100%",
+      height: "100%",
+      backgroundColor: "#000000",
+      overflow: "hidden"
     });
-    
+
     // Create main canvas
-    this.canvas = document.createElement('canvas');
-    this.canvas.className = 'game-display__canvas';
+    this.canvas = document.createElement("canvas");
+    this.canvas.className = "game-display__canvas";
     Object.assign(this.canvas.style, {
-      display: 'block',
-      width: '100%',
-      height: '100%',
-      imageRendering: 'pixelated', // Crisp pixel art
-      cursor: 'default'
+      display: "block",
+      width: "100%",
+      height: "100%",
+      imageRendering: "pixelated", // Crisp pixel art
+      cursor: "default"
     });
-    
+
     // Set initial canvas size
     this.canvas.width = 800;
     this.canvas.height = 600;
-    
+
     this.container.appendChild(this.canvas);
-    
+
     // Create status container if enabled
-    if (this.options.showConnectionStatus || this.options.showPerformanceStats) {
-      this.statusContainer = document.createElement('div');
-      this.statusContainer.className = 'game-display__status';
+    if (
+      this.options.showConnectionStatus ||
+      this.options.showPerformanceStats
+    ) {
+      this.statusContainer = document.createElement("div");
+      this.statusContainer.className = "game-display__status";
       Object.assign(this.statusContainer.style, {
-        position: 'absolute',
-        top: '8px',
-        right: '8px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '8px',
-        zIndex: '10'
+        position: "absolute",
+        top: "8px",
+        right: "8px",
+        display: "flex",
+        flexDirection: "column",
+        gap: "8px",
+        zIndex: "10"
       });
-      
+
       this.container.appendChild(this.statusContainer);
     }
-    
-    this.logger.debug('_createElement', 'Display DOM structure created');
+
+    this.logger.debug("_createElement", "Display DOM structure created");
   }
 
   /**
@@ -890,13 +957,13 @@ class GameDisplay {
     try {
       // Initialize renderer
       this.renderer = new TerminalRenderer(this.canvas, this.options.renderer);
-      
+
       // Initialize viewport manager
       this.viewport = new ViewportManager(this.canvas, this.options.viewport);
-      
+
       // Initialize game client
       this.gameClient = new GameClient(this.canvas, this.options.client);
-      
+
       // Initialize connection status if enabled
       if (this.options.showConnectionStatus && this.statusContainer) {
         this.connectionStatus = new ConnectionStatus({
@@ -905,16 +972,19 @@ class GameDisplay {
           showStatistics: true
         });
       }
-      
+
       // Initialize performance display if enabled
       if (this.options.showPerformanceStats && this.statusContainer) {
         this._createPerformanceDisplay();
       }
-      
-      this.logger.info('_initializeComponents', 'Core components initialized');
-      
+
+      this.logger.info("_initializeComponents", "Core components initialized");
     } catch (error) {
-      this.logger.error('_initializeComponents', 'Component initialization failed', error);
+      this.logger.error(
+        "_initializeComponents",
+        "Component initialization failed",
+        error
+      );
       throw error;
     }
   }
@@ -924,21 +994,24 @@ class GameDisplay {
    * @private
    */
   _createPerformanceDisplay() {
-    this.performanceDisplay = document.createElement('div');
-    this.performanceDisplay.className = 'game-display__performance';
-    
+    this.performanceDisplay = document.createElement("div");
+    this.performanceDisplay.className = "game-display__performance";
+
     Object.assign(this.performanceDisplay.style, {
-      padding: '8px',
-      backgroundColor: 'rgba(0, 0, 0, 0.8)',
-      color: '#00ff00',
-      fontFamily: 'monospace',
-      fontSize: '11px',
-      borderRadius: '4px',
-      minWidth: '200px'
+      padding: "8px",
+      backgroundColor: "rgba(0, 0, 0, 0.8)",
+      color: "#00ff00",
+      fontFamily: "monospace",
+      fontSize: "11px",
+      borderRadius: "4px",
+      minWidth: "200px"
     });
-    
+
     this.statusContainer.appendChild(this.performanceDisplay);
-    this.logger.debug('_createPerformanceDisplay', 'Performance display created');
+    this.logger.debug(
+      "_createPerformanceDisplay",
+      "Performance display created"
+    );
   }
 
   /**
@@ -947,23 +1020,23 @@ class GameDisplay {
    */
   _setupEventHandlers() {
     // Game client events
-    this.canvas.addEventListener('gameClientstatechange', (event) => {
+    this.canvas.addEventListener("gameClientstatechange", event => {
       this._handleConnectionStateChange(event.detail);
     });
-    
-    this.canvas.addEventListener('gameClientconnectionlost', (event) => {
-      this.logger.warn('_setupEventHandlers', 'Connection lost', event.detail);
+
+    this.canvas.addEventListener("gameClientconnectionlost", event => {
+      this.logger.warn("_setupEventHandlers", "Connection lost", event.detail);
     });
-    
+
     // Canvas resize handling
-    const resizeObserver = new ResizeObserver((entries) => {
+    const resizeObserver = new ResizeObserver(entries => {
       for (const entry of entries) {
         this._handleCanvasResize(entry.contentRect);
       }
     });
     resizeObserver.observe(this.canvas);
-    
-    this.logger.debug('_setupEventHandlers', 'Event handlers configured');
+
+    this.logger.debug("_setupEventHandlers", "Event handlers configured");
   }
 
   /**
@@ -973,21 +1046,27 @@ class GameDisplay {
    */
   _handleConnectionStateChange(detail) {
     const { newState, reason } = detail;
-    
+
     // Update connection status display
     if (this.connectionStatus) {
       const statusState = this._mapConnectionState(newState);
       this.connectionStatus.updateStatus(statusState, reason);
     }
-    
+
     // Start/stop rendering based on connection state
     if (newState === ConnectionState.PLAYING) {
       this._startRendering();
-    } else if (newState === ConnectionState.DISCONNECTED || newState === ConnectionState.ERROR) {
+    } else if (
+      newState === ConnectionState.DISCONNECTED ||
+      newState === ConnectionState.ERROR
+    ) {
       this._stopRendering();
     }
-    
-    this.logger.debug('_handleConnectionStateChange', `Connection state: ${newState}`);
+
+    this.logger.debug(
+      "_handleConnectionStateChange",
+      `Connection state: ${newState}`
+    );
   }
 
   /**
@@ -1006,7 +1085,7 @@ class GameDisplay {
       [ConnectionState.ERROR]: StatusState.ERROR,
       [ConnectionState.RECONNECTING]: StatusState.RECONNECTING
     };
-    
+
     return stateMap[clientState] || StatusState.DISCONNECTED;
   }
 
@@ -1017,21 +1096,24 @@ class GameDisplay {
    */
   _handleCanvasResize(rect) {
     const devicePixelRatio = window.devicePixelRatio || 1;
-    
+
     // Update canvas resolution for crisp rendering
     this.canvas.width = rect.width * devicePixelRatio;
     this.canvas.height = rect.height * devicePixelRatio;
-    
+
     // Scale context for high DPI displays
-    const context = this.canvas.getContext('2d');
+    const context = this.canvas.getContext("2d");
     context.scale(devicePixelRatio, devicePixelRatio);
-    
+
     // Update viewport
     if (this.viewport) {
       this.viewport.updateContent(this.canvas.width, this.canvas.height);
     }
-    
-    this.logger.debug('_handleCanvasResize', `Canvas resized: ${rect.width}x${rect.height}`);
+
+    this.logger.debug(
+      "_handleCanvasResize",
+      `Canvas resized: ${rect.width}x${rect.height}`
+    );
   }
 
   /**
@@ -1039,29 +1121,28 @@ class GameDisplay {
    * @returns {Promise<void>} Promise that resolves when initialization is complete
    */
   async init() {
-    this.logger.enter('init');
-    
+    this.logger.enter("init");
+
     if (this.initialized) {
-      this.logger.warn('init', 'Display already initialized');
+      this.logger.warn("init", "Display already initialized");
       return;
     }
-    
+
     try {
       // Initialize game client
       await this.gameClient.init();
-      
+
       // Set up tileset if available
       const clientStats = this.gameClient.getStats();
       if (clientStats.tileset) {
         this.renderer.setTileset(this.gameClient.tileset);
       }
-      
+
       this.initialized = true;
-      
-      this.logger.exit('init', { success: true });
-      
+
+      this.logger.exit("init", { success: true });
     } catch (error) {
-      this.logger.error('init', 'Display initialization failed', error);
+      this.logger.error("init", "Display initialization failed", error);
       throw error;
     }
   }
@@ -1074,11 +1155,11 @@ class GameDisplay {
     if (this.isRendering) {
       return;
     }
-    
+
     this.isRendering = true;
     this._renderLoop();
-    
-    this.logger.info('_startRendering', 'Rendering loop started');
+
+    this.logger.info("_startRendering", "Rendering loop started");
   }
 
   /**
@@ -1089,15 +1170,15 @@ class GameDisplay {
     if (!this.isRendering) {
       return;
     }
-    
+
     this.isRendering = false;
-    
+
     if (this.animationFrame) {
       cancelAnimationFrame(this.animationFrame);
       this.animationFrame = null;
     }
-    
-    this.logger.info('_stopRendering', 'Rendering loop stopped');
+
+    this.logger.info("_stopRendering", "Rendering loop stopped");
   }
 
   /**
@@ -1108,13 +1189,13 @@ class GameDisplay {
     if (!this.isRendering) {
       return;
     }
-    
+
     try {
       // Get current game state
       const clientStats = this.gameClient.getStats();
       if (clientStats.session && clientStats.session.gameState) {
         const gameState = clientStats.session.gameState;
-        
+
         // Update viewport content size
         const cellDimensions = this.renderer.getCellDimensions();
         this.viewport.updateContent(
@@ -1123,21 +1204,20 @@ class GameDisplay {
           cellDimensions.width,
           cellDimensions.height
         );
-        
+
         // Render with viewport transformation
         const transform = this.viewport.getTransform();
         this.renderer.render(gameState, transform);
       }
-      
+
       // Update performance display
       if (this.performanceDisplay) {
         this._updatePerformanceDisplay();
       }
-      
     } catch (error) {
-      this.logger.error('_renderLoop', 'Rendering error', error);
+      this.logger.error("_renderLoop", "Rendering error", error);
     }
-    
+
     // Schedule next frame
     this.animationFrame = requestAnimationFrame(() => this._renderLoop());
   }
@@ -1149,7 +1229,7 @@ class GameDisplay {
   _updatePerformanceDisplay() {
     const renderStats = this.renderer.getPerformanceStats();
     const clientStats = this.gameClient.getStats();
-    
+
     const performanceHTML = `
       <div><strong>Performance</strong></div>
       <div>FPS: ${renderStats.fps.toFixed(1)}</div>
@@ -1158,9 +1238,15 @@ class GameDisplay {
       <div>Mode: ${renderStats.mode}</div>
       <div>Scale: ${this.viewport.scale.toFixed(2)}x</div>
       <div>Polls: ${clientStats.totalPolls}</div>
-      ${clientStats.session ? `<div>Latency: ${clientStats.session.averageLatency.toFixed(0)}ms</div>` : ''}
+      ${
+        clientStats.session
+          ? `<div>Latency: ${clientStats.session.averageLatency.toFixed(
+              0
+            )}ms</div>`
+          : ""
+      }
     `;
-    
+
     this.performanceDisplay.innerHTML = performanceHTML;
   }
 
@@ -1175,7 +1261,9 @@ class GameDisplay {
       client: this.gameClient ? this.gameClient.getStats() : null,
       renderer: this.renderer ? this.renderer.getPerformanceStats() : null,
       viewport: this.viewport ? this.viewport.getTransform() : null,
-      connectionStatus: this.connectionStatus ? this.connectionStatus.getStatistics() : null
+      connectionStatus: this.connectionStatus
+        ? this.connectionStatus.getStatistics()
+        : null
     };
   }
 
@@ -1184,7 +1272,7 @@ class GameDisplay {
    */
   forceRender() {
     if (this.isRendering) {
-      this.logger.debug('forceRender', 'Manual render triggered');
+      this.logger.debug("forceRender", "Manual render triggered");
       this._renderLoop();
     }
   }
@@ -1193,59 +1281,59 @@ class GameDisplay {
    * Stops the display and cleans up resources
    */
   stop() {
-    this.logger.enter('stop');
-    
+    this.logger.enter("stop");
+
     this._stopRendering();
-    
+
     if (this.gameClient) {
       this.gameClient.stop();
     }
-    
+
     this.initialized = false;
-    
-    this.logger.info('stop', 'Game display stopped');
+
+    this.logger.info("stop", "Game display stopped");
   }
 
   /**
    * Destroys the display and releases all resources
    */
   destroy() {
-    this.logger.enter('destroy');
-    
+    this.logger.enter("destroy");
+
     this.stop();
-    
+
     // Destroy components
     if (this.gameClient) {
       this.gameClient.destroy();
     }
-    
+
     if (this.connectionStatus) {
       this.connectionStatus.destroy();
     }
-    
+
     // Clear DOM
     if (this.container) {
-      this.container.innerHTML = '';
+      this.container.innerHTML = "";
     }
-    
+
     // Clear references
     this.canvas = null;
     this.gameClient = null;
     this.renderer = null;
     this.viewport = null;
     this.connectionStatus = null;
-    
-    this.logger.info('destroy', 'Game display destroyed');
+
+    this.logger.info("destroy", "Game display destroyed");
   }
 }
 
 // Export public interface
-export { 
-  GameDisplay, 
-  TerminalRenderer, 
+export {
+  GameDisplay,
+  TerminalRenderer,
   ViewportManager,
   RenderMode,
-  FontStyle 
+  FontStyle
 };
 
-console.log('[GameDisplay] Game display component module loaded successfully');
+console.log("[GameDisplay] Game display component module loaded successfully");
