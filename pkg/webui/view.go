@@ -1,6 +1,7 @@
 package webui
 
 import (
+	"fmt"
 	"io"
 	"strconv"
 	"strings"
@@ -224,6 +225,8 @@ func (v *WebView) processTerminalData(data []byte) {
 func (v *WebView) processEscapeSequence(b byte) bool {
 	// Check for buffer overflow protection FIRST before appending
 	if len(v.escapeBuffer) >= 32 {
+		// Log the potential attack attempt for security monitoring
+		fmt.Printf("SECURITY WARNING: Escape sequence buffer overflow attempt detected, resetting\n")
 		// Reset escape sequence state and return true to exit
 		v.escapeBuffer = v.escapeBuffer[:0]
 		v.inEscapeSeq = false
@@ -240,6 +243,7 @@ func (v *WebView) processEscapeSequence(b byte) bool {
 		if (b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z') || b == 'm' || b == 'H' || b == 'J' || b == 'K' {
 			// Sequence is complete, process it
 			v.handleCSISequence(escSeq)
+			// Reset buffer after processing
 			v.escapeBuffer = v.escapeBuffer[:0]
 			v.inEscapeSeq = false
 			return true
@@ -251,12 +255,31 @@ func (v *WebView) processEscapeSequence(b byte) bool {
 	// Handle other escape sequences
 	if len(escSeq) >= 2 {
 		switch escSeq[1] {
+		case 'c': // Reset terminal
+			v.resetTerminalState()
+		case 'D': // Line feed
+			v.cursorY++
+			if v.cursorY >= v.height {
+				v.scrollUp()
+				v.cursorY = v.height - 1
+			}
+		case 'M': // Reverse line feed
+			v.cursorY--
+			if v.cursorY < 0 {
+				v.scrollDown()
+				v.cursorY = 0
+			}
 		default:
 			// Unknown sequence, terminate
 			v.escapeBuffer = v.escapeBuffer[:0]
 			v.inEscapeSeq = false
 			return true
 		}
+
+		// Reset buffer after processing
+		v.escapeBuffer = v.escapeBuffer[:0]
+		v.inEscapeSeq = false
+		return true
 	}
 
 	// Continue building sequence
