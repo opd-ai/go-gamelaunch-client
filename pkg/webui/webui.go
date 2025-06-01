@@ -1,6 +1,7 @@
 package webui
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -211,10 +212,18 @@ func (w *WebUI) handleRPC(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	// Send response
-	rw.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(rw).Encode(response); err != nil {
+	var responseBuffer bytes.Buffer
+	if err := json.NewEncoder(&responseBuffer).Encode(response); err != nil {
 		log.Printf("Failed to encode RPC response: %v", err)
 		w.sendRPCError(rw, rpcReq.ID, InternalError, "Failed to encode response")
+		return
+	}
+
+	// Only set headers and write after successful encoding
+	rw.Header().Set("Content-Type", "application/json")
+	if _, err := responseBuffer.WriteTo(rw); err != nil {
+		log.Printf("Failed to write RPC response: %v", err)
+		// Cannot send error response here as headers are already written
 		return
 	}
 }
