@@ -1,0 +1,42 @@
+/* Preload monospace font for consistent rendering */
+@font-face {
+    font-family: 'Mono';
+    src: local('Courier New'), local('Monaco'), local('Menlo'), local('Consolas');
+    font-display: block;
+}
+
+body {
+    margin: 0;
+    padding: 20px;
+    background-color: #1a1a1a;
+    color: white;
+    font-family: 'Mono', monospace;
+}
+#gameCanvas {
+    display: block;
+    margin: 20px auto;
+    border: 2px solid #444;
+    /* Ensure crisp pixel rendering */
+    image-rendering: -moz-crisp-edges;
+    image-rendering: -webkit-crisp-edges;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+}
+
+/* Add loading indicator for better UX */
+.loading {
+    text-align: center;
+    margin-top: 20px;
+}
+
+.loading::after {
+    content: '...';
+    animation: dots 1.5s steps(4, end) infinite;
+}
+
+@keyframes dots {
+    0%, 20% { content: '.'; }
+    40% { content: '..'; }
+    60% { content: '...'; }
+    80%, 100% { content: ''; }
+}

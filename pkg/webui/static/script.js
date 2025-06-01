@@ -269,44 +269,80 @@ class GameClient {
         
         // Character rendering
         if (this.tilesetImage && this.tileset && cell.tile_x !== undefined && cell.tile_y !== undefined) {
-            // Tile-based rendering
+            // Render using tileset
+            const srcX = cell.tile_x * this.tileset.tile_width;
+            const srcY = cell.tile_y * this.tileset.tile_height;
+            
             this.ctx.drawImage(
                 this.tilesetImage,
-                cell.tile_x * this.tileset.tile_width,
-                cell.tile_y * this.tileset.tile_height,
-                this.tileset.tile_width,
-                this.tileset.tile_height,
-                pixelX,
-                pixelY,
-                cellWidth,
-                cellHeight
+                srcX, srcY, this.tileset.tile_width, this.tileset.tile_height,
+                pixelX, pixelY, cellWidth, cellHeight
             );
         } else if (cell.char && cell.char !== ' ') {
-            // Text-based rendering
-            this.ctx.fillStyle = cell.fg_color || '#FFFFFF';
-            this.ctx.font = `${cellHeight - 2}px monospace`;
-            this.ctx.textBaseline = 'top';
-            
-            if (cell.bold) {
-                this.ctx.font = `bold ${cellHeight - 2}px monospace`;
-            }
-            
-            if (cell.inverse) {
-                // Swap colors for inverse
-                this.ctx.fillStyle = cell.bg_color || '#000000';
-                this.ctx.fillRect(pixelX, pixelY, cellWidth, cellHeight);
-                this.ctx.fillStyle = cell.fg_color || '#FFFFFF';
-            }
-            
-            // Center the character in the cell
-            const metrics = this.ctx.measureText(cell.char);
-            const charX = pixelX + (cellWidth - metrics.width) / 2;
-            const charY = pixelY + 1;
-            
-            this.ctx.fillText(cell.char, charX, charY);
+            // Text fallback - size font to fit tile dimensions
+            this.renderTextFallback(pixelX, pixelY, cellWidth, cellHeight, cell);
         }
     }
-    
+
+    renderTextFallback(x, y, width, height, cell) {
+        // Calculate optimal font size to fit the tile dimensions
+        // Start with a base size and adjust to fit
+        let fontSize = Math.min(width * 0.8, height * 0.8);
+        
+        // Ensure minimum readable size
+        fontSize = Math.max(fontSize, 8);
+        
+        // Set font properties for monospace rendering
+        this.ctx.font = `${fontSize}px monospace`;
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+        
+        // Apply text styling
+        if (cell.bold) {
+            this.ctx.font = `bold ${fontSize}px monospace`;
+        }
+        
+        // Set text color
+        this.ctx.fillStyle = cell.fg_color || '#FFFFFF';
+        
+        // Handle inverse rendering
+        if (cell.inverse) {
+            // Swap foreground and background
+            const bgColor = cell.bg_color || '#000000';
+            const fgColor = cell.fg_color || '#FFFFFF';
+            
+            // Fill background with foreground color
+            this.ctx.fillStyle = fgColor;
+            this.ctx.fillRect(x, y, width, height);
+            
+            // Set text color to background color
+            this.ctx.fillStyle = bgColor;
+        }
+        
+        // Calculate text position (centered in tile)
+        const textX = x + width / 2;
+        const textY = y + height / 2;
+        
+        // Measure text to ensure it fits
+        const char = String.fromCharCode(cell.char);
+        const metrics = this.ctx.measureText(char);
+        
+        // If text is too wide, reduce font size
+        if (metrics.width > width * 0.9) {
+            fontSize = fontSize * (width * 0.9) / metrics.width;
+            this.ctx.font = cell.bold ? `bold ${fontSize}px monospace` : `${fontSize}px monospace`;
+        }
+        
+        // Render the character
+        this.ctx.fillText(char, textX, textY);
+        
+        // Handle blinking effect (if needed)
+        if (cell.blink) {
+            // Could implement blinking by toggling visibility
+            // For now, just render normally
+        }
+    }
+
     renderCursor(cellWidth, cellHeight) {
         if (this.gameState.cursor_x >= 0 && this.gameState.cursor_y >= 0) {
             const cursorX = this.gameState.cursor_x * cellWidth;
