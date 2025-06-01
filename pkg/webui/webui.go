@@ -106,7 +106,7 @@ func (w *WebUI) setupRoutes() {
 		// Serve embedded files
 		w.mux.HandleFunc("/", func(rw http.ResponseWriter, r *http.Request) {
 			if strings.HasSuffix(r.URL.Path, ".js") {
-				rw.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+				rw.Header().Set("Content-Type", "application/javascript; charset=utf-8")
 				data, err := staticIndexJS.ReadFile(filepath.Join("static", r.URL.Path))
 				if err != nil {
 					http.Error(rw, "Failed to read static file", http.StatusInternalServerError)

@@ -1,316 +1,94 @@
 # tui
---
-    import "github.com/opd-ai/go-gamelaunch-client/pkg/tui"
 
+A terminal user interface package providing ANSI terminal emulation and display management for dgamelaunch-style roguelike games.
 
-## Usage
+---
 
-#### func  NewTerminalView
+## Installation
 
-```go
-func NewTerminalView(opts dgclient.ViewOptions) (dgclient.View, error)
-```
-NewTerminalView creates a new terminal-based view
-
-#### type AnsiParser
-
-```go
-type AnsiParser struct {
-}
+```bash
+go get github.com/opd-ai/go-gamelaunch-client/pkg/tui
 ```
 
-AnsiParser handles ANSI escape sequence parsing
-
-#### type BufferedReader
-
-```go
-type BufferedReader struct {
-}
-```
-
-BufferedReader provides a buffered input reader
-
-#### func  NewBufferedReader
-
-```go
-func NewBufferedReader(inputCh <-chan []byte) *BufferedReader
-```
-NewBufferedReader creates a new buffered reader
-
-#### func (*BufferedReader) Read
-
-```go
-func (r *BufferedReader) Read(p []byte) (n int, err error)
-```
-Read implements io.Reader
-
-#### type Cell
-
-```go
-type Cell struct {
-	Char rune
-	Attr CellAttributes
-}
-```
-
-Cell represents a single character cell with attributes
-
-#### type CellAttributes
-
-```go
-type CellAttributes struct {
-	Foreground Color
-	Background Color
-	Bold       bool
-	Underline  bool
-	Reverse    bool
-}
-```
-
-CellAttributes stores text formatting information
-
-#### type Color
-
-```go
-type Color struct {
-	R, G, B uint8
-	IsIndex bool
-	Index   uint8
-}
-```
-
-Color represents a terminal color
-
-#### type InputBuffer
-
-```go
-type InputBuffer struct {
-}
-```
-
-InputBuffer provides input buffering with line editing capabilities
-
-#### func  NewInputBuffer
-
-```go
-func NewInputBuffer() *InputBuffer
-```
-NewInputBuffer creates a new input buffer
-
-#### func (*InputBuffer) AddChar
-
-```go
-func (b *InputBuffer) AddChar(r rune)
-```
-AddChar adds a character at the current position
-
-#### func (*InputBuffer) DeleteChar
-
-```go
-func (b *InputBuffer) DeleteChar() bool
-```
-DeleteChar deletes the character before the cursor
-
-#### func (*InputBuffer) GetLine
-
-```go
-func (b *InputBuffer) GetLine() string
-```
-GetLine returns the current line and resets the buffer
-
-#### func (*InputBuffer) HistoryDown
-
-```go
-func (b *InputBuffer) HistoryDown() bool
-```
-HistoryDown moves down in history
-
-#### func (*InputBuffer) HistoryUp
-
-```go
-func (b *InputBuffer) HistoryUp() bool
-```
-HistoryUp moves up in history
-
-#### func (*InputBuffer) MoveLeft
-
-```go
-func (b *InputBuffer) MoveLeft() bool
-```
-MoveLeft moves the cursor left
-
-#### func (*InputBuffer) MoveRight
-
-```go
-func (b *InputBuffer) MoveRight() bool
-```
-MoveRight moves the cursor right
-
-#### type InputHandler
-
-```go
-type InputHandler struct {
-}
-```
-
-InputHandler processes user input with different modes
-
-#### func  NewInputHandler
-
-```go
-func NewInputHandler() *InputHandler
-```
-NewInputHandler creates a new input handler
-
-#### func (*InputHandler) ProcessKey
-
-```go
-func (h *InputHandler) ProcessKey(ev *tcell.EventKey) ([]byte, bool)
-```
-ProcessKey processes a key event based on current mode
-
-#### func (*InputHandler) SetMode
-
-```go
-func (h *InputHandler) SetMode(mode InputMode)
-```
-SetMode changes the input processing mode
-
-#### type InputMode
-
-```go
-type InputMode int
-```
-
-InputMode defines how input is processed
-
-```go
-const (
-	// InputModeNormal processes input normally
-	InputModeNormal InputMode = iota
-
-	// InputModeRaw sends all input without processing
-	InputModeRaw
-
-	// InputModePassword hides input
-	InputModePassword
-)
-```
-
-#### type ParserState
-
-```go
-type ParserState int
-```
-
-
-```go
-const (
-	StateNormal ParserState = iota
-	StateEscape
-	StateCSI
-	StateOSC
-)
-```
-
-#### type TerminalEmulator
-
-```go
-type TerminalEmulator struct {
-}
-```
-
-TerminalEmulator provides a proper terminal emulation layer
-
-#### func  NewTerminalEmulator
-
-```go
-func NewTerminalEmulator(width, height int) *TerminalEmulator
-```
-NewTerminalEmulator creates a new terminal emulator
-
-#### func (*TerminalEmulator) GetCursor
-
-```go
-func (te *TerminalEmulator) GetCursor() (int, int)
-```
-GetCursor returns the current cursor position
-
-#### func (*TerminalEmulator) GetScreen
-
-```go
-func (te *TerminalEmulator) GetScreen() [][]Cell
-```
-GetScreen returns a copy of the current screen state
-
-#### func (*TerminalEmulator) ProcessData
-
-```go
-func (te *TerminalEmulator) ProcessData(data []byte)
-```
-ProcessData processes incoming terminal data and updates the screen
-
-#### func (*TerminalEmulator) Resize
-
-```go
-func (te *TerminalEmulator) Resize(width, height int)
-```
-Resize changes the terminal dimensions
-
-#### type TerminalView
-
-```go
-type TerminalView struct {
-}
-```
-
-TerminalView implements dgclient.View using tcell for terminal rendering
-
-#### func (*TerminalView) Clear
-
-```go
-func (v *TerminalView) Clear() error
-```
-Clear clears the display
-
-#### func (*TerminalView) Close
-
-```go
-func (v *TerminalView) Close() error
-```
-Close cleans up resources
-
-#### func (*TerminalView) GetSize
-
-```go
-func (v *TerminalView) GetSize() (width, height int)
-```
-GetSize returns current dimensions
-
-#### func (*TerminalView) HandleInput
-
-```go
-func (v *TerminalView) HandleInput() ([]byte, error)
-```
-HandleInput reads and returns user input
-
-#### func (*TerminalView) Init
-
-```go
-func (v *TerminalView) Init() error
-```
-Init initializes the terminal view
-
-#### func (*TerminalView) Render
-
-```go
-func (v *TerminalView) Render(data []byte) error
-```
-Render displays the provided data
-
-#### func (*TerminalView) SetSize
-
-```go
-func (v *TerminalView) SetSize(width, height int) error
-```
-SetSize updates the view dimensions
+---
+
+## Features
+
+### Terminal Emulation
+- **ANSI Escape Sequence Processing** - Complete support for cursor movement, color codes, and screen control sequences
+- **Screen Buffer Management** - Efficient character-based display buffer with proper memory management
+- **Terminal State Tracking** - Maintains cursor position, attributes, and screen dimensions
+- **Character Attribute Handling** - Bold, inverse, blinking, and color attribute processing
+- **Terminal Type Support** - Compatible with xterm, vt100, and other standard terminal types
+
+### Display Management
+- **tcell Integration** - Built on gdamore/tcell/v2 for cross-platform terminal handling
+- **Real-Time Rendering** - Efficient screen updates with minimal flicker and proper refresh management
+- **Color Support** - Full 256-color palette with RGB true color support where available
+- **Unicode Handling** - Complete UTF-8 character support including wide characters and combining marks
+- **Screen Resize Handling** - Dynamic terminal size adjustment with proper content reflow
+
+### Input Processing
+- **Keyboard Event Handling** - Complete keyboard input capture including special keys and modifiers
+- **Mouse Support** - Mouse click and movement event processing for interactive gameplay
+- **Input Buffering** - Efficient input event queuing with configurable buffer sizes
+- **Key Mapping** - Customizable key bindings for game-specific control schemes
+- **Focus Management** - Proper input focus handling for terminal applications
+
+### View Interface Implementation
+- **dgclient.View Compatibility** - Implements the View interface for seamless integration with SSH clients
+- **Terminal Dimensions** - Automatic terminal size detection with resize event propagation
+- **Data Rendering** - Efficient conversion of game data to terminal display format
+- **State Synchronization** - Maintains consistency between game state and terminal display
+- **Error Handling** - Graceful degradation with informative error messages
+
+### Terminal Emulator Features
+- **Cursor Management** - Full cursor control including visibility, position, and style
+- **Scroll Region Support** - Proper handling of scrollable areas and viewport management
+- **Character Sets** - Support for alternate character sets and special symbols
+- **Terminal Modes** - Application mode, alternate screen buffer, and other terminal modes
+- **Line Discipline** - Proper handling of line endings, wrapping, and character encoding
+
+### Performance Optimizations
+- **Incremental Updates** - Only renders changed screen regions for optimal performance
+- **Buffer Recycling** - Efficient memory usage with buffer pooling and reuse
+- **Event Batching** - Groups related events to reduce processing overhead
+- **Lazy Rendering** - Deferred screen updates until refresh is needed
+- **Memory Management** - Proper cleanup and resource management for long-running sessions
+
+### Cross-Platform Support
+- **Windows Compatibility** - Full Windows terminal support through tcell abstraction
+- **Unix/Linux Support** - Native terminal handling on Unix-like systems
+- **Terminal Detection** - Automatic capability detection and fallback handling
+- **Encoding Support** - Proper character encoding handling across different platforms
+- **Signal Handling** - Graceful shutdown and resize signal processing
+
+### Developer Features
+- **Clean API Design** - Intuitive interfaces following Go best practices
+- **Comprehensive Testing** - Unit tests for terminal emulation and display functions
+- **Debug Support** - Built-in debugging capabilities with verbose logging
+- **Mock Implementations** - Test utilities for development and unit testing
+- **Documentation** - Complete godoc documentation with usage examples
+
+### Integration Capabilities
+- **Modular Architecture** - Clean separation between emulation and display concerns
+- **Plugin Support** - Extensible design for custom terminal behavior
+- **CLI Foundation** - Solid base for command-line application development
+- **Library Embedding** - Easy integration into larger Go applications
+- **Configuration Support** - Flexible configuration options for terminal behavior
+
+---
+
+## Architecture
+
+The tui package implements a layered architecture designed for robust terminal emulation and display management:
+
+**Emulation Layer**: The TerminalEmulator interface provides ANSI escape sequence processing, screen buffer management, and terminal state tracking. Handles cursor positioning, character attributes, and screen control commands with full compatibility for standard terminal types.
+
+**Display Layer**: Built on tcell for cross-platform terminal handling, providing real-time rendering with efficient screen updates. Manages color support, Unicode handling, and terminal capability detection while maintaining consistent display across different platforms.
+
+**Input Layer**: Comprehensive input event processing with keyboard and mouse support. Handles special key combinations, modifier keys, and provides configurable key mapping for game-specific controls with proper focus management.
+
+**View Layer**: Implements the dgclient.View interface for seamless integration with SSH clients. Manages terminal dimensions, data rendering, and state synchronization between game sessions and terminal display with automatic resize handling.
+
+The package serves as the foundation for terminal-based game clients, providing reliable terminal emulation while maintaining compatibility with traditional roguelike games. The modular design enables custom implementations while ensuring robust display management and comprehensive input handling for optimal gaming experience.
