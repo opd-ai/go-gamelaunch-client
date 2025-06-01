@@ -2,6 +2,9 @@ package webui
 
 import (
 	"context"
+	"fmt"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -11,14 +14,14 @@ type StateManager struct {
 	mu           sync.RWMutex
 	currentState *GameState
 	version      uint64
-	waiters      map[uint64]chan *StateDiff
+	waiters      map[string]chan *StateDiff
 	waitersMu    sync.Mutex
 }
 
 // NewStateManager creates a new state manager
 func NewStateManager() *StateManager {
 	return &StateManager{
-		waiters: make(map[uint64]chan *StateDiff),
+		waiters: make(map[string]chan *StateDiff),
 	}
 }
 
@@ -67,7 +70,7 @@ func (sm *StateManager) GetCurrentVersion() uint64 {
 	return sm.version
 }
 
-// PollChanges waits for changes since the specified version
+// FIXED: Use unique waiter keys to prevent race conditions between concurrent clients
 func (sm *StateManager) PollChanges(clientVersion uint64, timeout time.Duration) (*StateDiff, error) {
 	sm.mu.RLock()
 	currentVersion := sm.version
@@ -81,13 +84,17 @@ func (sm *StateManager) PollChanges(clientVersion uint64, timeout time.Duration)
 	// Wait for next change
 	waiterCh := make(chan *StateDiff, 1)
 
+	// Fix: Generate unique key to prevent concurrent client interference
+
+	uniqueKey := fmt.Sprintf("%d-%d", clientVersion, time.Now().UnixNano())
+
 	sm.waitersMu.Lock()
-	sm.waiters[clientVersion] = waiterCh
+	sm.waiters[uniqueKey] = waiterCh // Use unique key instead of clientVersion
 	sm.waitersMu.Unlock()
 
 	defer func() {
 		sm.waitersMu.Lock()
-		delete(sm.waiters, clientVersion)
+		delete(sm.waiters, uniqueKey) // Clean up using unique key
 		sm.waitersMu.Unlock()
 	}()
 
@@ -96,6 +103,27 @@ func (sm *StateManager) PollChanges(clientVersion uint64, timeout time.Duration)
 		return diff, nil
 	case <-time.After(timeout):
 		return nil, nil // Timeout
+	}
+}
+
+func (sm *StateManager) notifyWaiters(diff *StateDiff) {
+	sm.waitersMu.Lock()
+	defer sm.waitersMu.Unlock()
+
+	for key, waiterCh := range sm.waiters {
+		// Fix: Parse version from unique key for comparison
+		parts := strings.Split(key, "-")
+		if len(parts) >= 1 {
+			if version, err := strconv.ParseUint(parts[0], 10, 64); err == nil {
+				if version < diff.Version {
+					select {
+					case waiterCh <- diff:
+					default:
+						// Channel full, skip
+					}
+				}
+			}
+		}
 	}
 }
 
@@ -114,13 +142,15 @@ func (sm *StateManager) PollChangesWithContext(pollCtx context.Context, version 
 	// Wait for next change
 	waiterCh := make(chan *StateDiff, 1)
 
+	uniqueKey := fmt.Sprintf("%d-%d", version, time.Now().UnixNano())
+
 	sm.waitersMu.Lock()
-	sm.waiters[version] = waiterCh
+	sm.waiters[uniqueKey] = waiterCh
 	sm.waitersMu.Unlock()
 
 	defer func() {
 		sm.waitersMu.Lock()
-		delete(sm.waiters, version)
+		delete(sm.waiters, uniqueKey)
 		sm.waitersMu.Unlock()
 	}()
 
@@ -230,20 +260,4 @@ func (sm *StateManager) cellsDiffer(a, b Cell) bool {
 		a.Blink != b.Blink ||
 		a.TileX != b.TileX ||
 		a.TileY != b.TileY
-}
-
-// notifyWaiters sends diff to all waiting clients
-func (sm *StateManager) notifyWaiters(diff *StateDiff) {
-	sm.waitersMu.Lock()
-	defer sm.waitersMu.Unlock()
-
-	for version, waiterCh := range sm.waiters {
-		if version < diff.Version {
-			select {
-			case waiterCh <- diff:
-			default:
-				// Channel full, skip
-			}
-		}
-	}
 }

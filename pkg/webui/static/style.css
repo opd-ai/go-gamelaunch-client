@@ -12,6 +12,21 @@ body {
     color: white;
     font-family: 'Mono', monospace;
 }
+
+body {
+    margin: 0;
+    padding: 20px;
+    background-color: #1a1a1a;
+    color: white;
+    font-family: monospace;
+}
+
+#gameCanvas {
+    display: block;
+    margin: 20px auto;
+    border: 2px solid #444;
+}
+
 #gameCanvas {
     display: block;
     margin: 20px auto;

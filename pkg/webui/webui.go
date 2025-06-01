@@ -176,7 +176,10 @@ func (w *WebUI) isOriginAllowed(origin string) bool {
 
 // handleRPC processes JSON-RPC requests
 func (w *WebUI) handleRPC(rw http.ResponseWriter, r *http.Request) {
+	log.Printf("RPC request received: %s %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
+
 	if r.Method != "POST" {
+		log.Printf("RPC request failed: method %s not allowed", r.Method)
 		http.Error(rw, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -184,22 +187,28 @@ func (w *WebUI) handleRPC(rw http.ResponseWriter, r *http.Request) {
 	// Parse JSON-RPC request
 	var rpcReq RPCRequest
 	if err := json.NewDecoder(r.Body).Decode(&rpcReq); err != nil {
+		log.Printf("RPC request failed: parse error - %v", err)
 		w.sendRPCError(rw, nil, ParseError, "Parse error")
 		return
 	}
 
+	log.Printf("RPC request parsed: method=%s, id=%v", rpcReq.Method, rpcReq.ID)
+
 	// Validate JSON-RPC version
 	if rpcReq.JSONRPC != "2.0" {
+		log.Printf("RPC request failed: invalid JSON-RPC version %s", rpcReq.JSONRPC)
 		w.sendRPCError(rw, rpcReq.ID, InvalidRequest, "Invalid Request")
 		return
 	}
 
 	// Process request
+	log.Printf("Processing RPC method: %s", rpcReq.Method)
 	ctx := r.Context()
 	response := w.rpcHandler.HandleRequest(ctx, &rpcReq)
 
 	// Ensure response is properly formed
 	if response == nil {
+		log.Printf("RPC handler returned nil response for method %s", rpcReq.Method)
 		response = &RPCResponse{
 			JSONRPC: "2.0",
 			Error: &RPCError{
@@ -210,25 +219,33 @@ func (w *WebUI) handleRPC(rw http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	log.Printf("RPC response prepared for method %s, id=%v", rpcReq.Method, rpcReq.ID)
+
 	// Send response
 	var responseBuffer bytes.Buffer
 	if err := json.NewEncoder(&responseBuffer).Encode(response); err != nil {
-		log.Printf("Failed to encode RPC response: %v", err)
+		log.Printf("Failed to encode RPC response for method %s: %v", rpcReq.Method, err)
 		w.sendRPCError(rw, rpcReq.ID, InternalError, "Failed to encode response")
 		return
 	}
 
+	log.Printf("RPC response encoded successfully for method %s", rpcReq.Method)
+
 	// Only set headers and write after successful encoding
 	rw.Header().Set("Content-Type", "application/json")
 	if _, err := responseBuffer.WriteTo(rw); err != nil {
-		log.Printf("Failed to write RPC response: %v", err)
+		log.Printf("Failed to write RPC response for method %s: %v", rpcReq.Method, err)
 		// Cannot send error response here as headers are already written
 		return
 	}
+
+	log.Printf("RPC request completed successfully: method=%s, id=%v", rpcReq.Method, rpcReq.ID)
 }
 
 // sendRPCError sends a JSON-RPC error response
 func (w *WebUI) sendRPCError(rw http.ResponseWriter, id interface{}, code int, message string) {
+	log.Printf("Sending RPC error response: id=%v, code=%d, message=%s", id, code, message)
+
 	response := &RPCResponse{
 		JSONRPC: "2.0",
 		Error: &RPCError{
@@ -238,35 +255,65 @@ func (w *WebUI) sendRPCError(rw http.ResponseWriter, id interface{}, code int, m
 		ID: id,
 	}
 
+	log.Printf("RPC error response created: %+v", response)
+
 	rw.Header().Set("Content-Type", "application/json")
+	log.Printf("Set Content-Type header for RPC error response")
+
 	rw.WriteHeader(http.StatusOK) // JSON-RPC errors still return 200
-	json.NewEncoder(rw).Encode(response)
+	log.Printf("Set HTTP status 200 for RPC error response")
+
+	if err := json.NewEncoder(rw).Encode(response); err != nil {
+		log.Printf("Failed to encode RPC error response: %v", err)
+		return
+	}
+
+	log.Printf("RPC error response sent successfully: id=%v, code=%d", id, code)
 }
 
 // handleTilesetImage serves the tileset image
 func (w *WebUI) handleTilesetImage(rw http.ResponseWriter, r *http.Request) {
-	if w.tileset == nil || w.tileset.GetImageData() == nil {
+	log.Printf("Tileset image request received: %s %s from %s", r.Method, r.URL.Path, r.RemoteAddr)
+
+	if w.tileset == nil {
+		log.Printf("Tileset image request failed: tileset is nil")
 		http.NotFound(rw, r)
 		return
 	}
 
+	if w.tileset.GetImageData() == nil {
+		log.Printf("Tileset image request failed: image data is nil for tileset %s", w.tileset.Name)
+		http.NotFound(rw, r)
+		return
+	}
+
+	log.Printf("Serving tileset image: name=%s, version=%s", w.tileset.Name, w.tileset.Version)
+
 	// Check for If-None-Match header for caching
 	etag := fmt.Sprintf(`"%s-%s"`, w.tileset.Name, w.tileset.Version)
 	if r.Header.Get("If-None-Match") == etag {
+		log.Printf("Tileset image not modified (ETag match): %s", etag)
 		rw.WriteHeader(http.StatusNotModified)
 		return
 	}
+
+	log.Printf("Serving fresh tileset image with ETag: %s", etag)
 
 	// Set caching headers
 	rw.Header().Set("ETag", etag)
 	rw.Header().Set("Cache-Control", "public, max-age=3600")
 	rw.Header().Set("Content-Type", "image/png")
 
+	log.Printf("Set response headers for tileset image")
+
 	// Encode image as PNG
 	if err := png.Encode(rw, w.tileset.GetImageData()); err != nil {
+		log.Printf("Failed to encode tileset image as PNG: %v", err)
 		http.Error(rw, "Failed to encode image", http.StatusInternalServerError)
 		return
 	}
+
+	log.Printf("Tileset image served successfully: name=%s, version=%s", w.tileset.Name, w.tileset.Version)
 }
 
 // GetTileset returns the current tileset configuration
