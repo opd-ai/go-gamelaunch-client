@@ -1,1121 +1,763 @@
 /**
- * @fileoverview Input event management for terminal-based game interaction with buffering and statistics
- * @module services/input-manager
+ * @fileoverview Game client service for managing connections to dgamelaunch servers with RPC communication
+ * @module services/game-client
  * @requires utils/logger
+ * @requires models/game-state
+ * @requires services/input-manager
  * @author go-gamelaunch-client
  * @version 1.0.0
  */
 
 import { createLogger, LogLevel } from "../utils/logger.js";
+import { GameState } from "../models/game-state.js";
+import { InputManager, InputEventType } from "./input-manager.js";
 
 /**
  * @enum {string}
  * @readonly
- * @description Input event types for classification and processing
+ * @description Connection states for game client state management
  */
-const InputEventType = {
-  KEY_DOWN: "keydown",
-  KEY_UP: "keyup",
-  MOUSE_CLICK: "mouseclick",
-  MOUSE_MOVE: "mousemove",
-  FOCUS: "focus",
-  BLUR: "blur"
+const ConnectionState = {
+  DISCONNECTED: "disconnected",
+  CONNECTING: "connecting",
+  CONNECTED: "connected",
+  AUTHENTICATED: "authenticated",
+  PLAYING: "playing",
+  ERROR: "error",
+  RECONNECTING: "reconnecting"
 };
 
 /**
  * @enum {string}
  * @readonly
- * @description Special key mappings for terminal game controls
+ * @description RPC method names for server communication
  */
-const SpecialKeys = {
-  ARROW_UP: "ArrowUp",
-  ARROW_DOWN: "ArrowDown",
-  ARROW_LEFT: "ArrowLeft",
-  ARROW_RIGHT: "ArrowRight",
-  ENTER: "Enter",
-  ESCAPE: "Escape",
-  SPACE: " ",
-  TAB: "Tab",
-  BACKSPACE: "Backspace",
-  DELETE: "Delete",
-  HOME: "Home",
-  END: "End",
-  PAGE_UP: "PageUp",
-  PAGE_DOWN: "PageDown"
+const RPCMethod = {
+  CONNECT: "GameClient.Connect",
+  DISCONNECT: "GameClient.Disconnect",
+  SEND_INPUT: "GameClient.SendInput",
+  GET_STATE: "GameClient.GetState",
+  RESIZE: "GameClient.Resize",
+  PING: "GameClient.Ping"
 };
 
 /**
- * @class InputEvent
- * @description Represents a single input event with normalized properties for game processing
+ * @class RPCClient
+ * @description Handles JSON-RPC communication with the server
  */
-class InputEvent {
+class RPCClient {
   /**
-   * Creates a new InputEvent instance
-   * @param {string} type - Event type (from InputEventType enum)
-   * @param {Object} data - Event data
-   * @param {string} [data.key] - Key identifier for keyboard events
-   * @param {string} [data.code] - Physical key code
-   * @param {boolean} [data.ctrlKey=false] - Ctrl modifier state
-   * @param {boolean} [data.altKey=false] - Alt modifier state
-   * @param {boolean} [data.shiftKey=false] - Shift modifier state
-   * @param {boolean} [data.metaKey=false] - Meta/Cmd modifier state
-   * @param {number} [data.x] - Mouse X coordinate
-   * @param {number} [data.y] - Mouse Y coordinate
-   * @param {number} [data.button] - Mouse button pressed
-   * @param {Event} [originalEvent] - Original DOM event for reference
+   * Creates a new RPCClient instance
+   * @param {string} endpoint - RPC endpoint URL
+   * @param {Object} [options={}] - Client configuration options
    */
-  constructor(type, data, originalEvent = null) {
-    this.type = type;
-    this.timestamp = Date.now();
-    this.id = `${type}_${this.timestamp}_${Math.random()
-      .toString(36)
-      .substr(2, 9)}`;
-
-    // Keyboard event properties
-    this.key = data.key || null;
-    this.code = data.code || null;
-    this.ctrlKey = Boolean(data.ctrlKey);
-    this.altKey = Boolean(data.altKey);
-    this.shiftKey = Boolean(data.shiftKey);
-    this.metaKey = Boolean(data.metaKey);
-
-    // Mouse event properties
-    this.x = data.x || null;
-    this.y = data.y || null;
-    this.button = data.button || null;
-
-    // Event metadata
-    this.originalEvent = originalEvent;
-    this.processed = false;
-    this.sent = false;
-    this.sendAttempts = 0;
-
-    // Derived properties
-    this.hasModifiers =
-      this.ctrlKey || this.altKey || this.shiftKey || this.metaKey;
-    this.isSpecialKey =
-      this.key && Object.values(SpecialKeys).includes(this.key);
-  }
-
-  /**
-   * Checks if this is a keyboard event
-   * @returns {boolean} True if event is keyboard-related
-   */
-  isKeyboardEvent() {
-    return (
-      this.type === InputEventType.KEY_DOWN ||
-      this.type === InputEventType.KEY_UP
-    );
-  }
-
-  /**
-   * Checks if this is a mouse event
-   * @returns {boolean} True if event is mouse-related
-   */
-  isMouseEvent() {
-    return (
-      this.type === InputEventType.MOUSE_CLICK ||
-      this.type === InputEventType.MOUSE_MOVE
-    );
-  }
-
-  /**
-   * Gets a formatted string representation of the key combination
-   * @returns {string} Human-readable key combination
-   */
-  getKeyString() {
-    if (!this.isKeyboardEvent()) {
-      return null;
-    }
-
-    const modifiers = [];
-    if (this.ctrlKey) modifiers.push("Ctrl");
-    if (this.altKey) modifiers.push("Alt");
-    if (this.shiftKey) modifiers.push("Shift");
-    if (this.metaKey) modifiers.push("Meta");
-
-    const keyPart = this.key || this.code || "Unknown";
-    return modifiers.length > 0 ? `${modifiers.join("+")}+${keyPart}` : keyPart;
-  }
-
-  /**
-   * Marks the event as processed
-   * @param {boolean} [sent=false] - Whether the event was successfully sent
-   */
-  markProcessed(sent = false) {
-    this.processed = true;
-    this.sent = sent;
-    if (sent) {
-      this.sendAttempts++;
-    }
-  }
-
-  /**
-   * Converts event to JSON representation for transmission
-   * @returns {Object} JSON-serializable event data
-   */
-  toJSON() {
-    return {
-      id: this.id,
-      type: this.type,
-      timestamp: this.timestamp,
-      key: this.key,
-      code: this.code,
-      ctrlKey: this.ctrlKey,
-      altKey: this.altKey,
-      shiftKey: this.shiftKey,
-      metaKey: this.metaKey,
-      x: this.x,
-      y: this.y,
-      button: this.button,
-      hasModifiers: this.hasModifiers,
-      isSpecialKey: this.isSpecialKey
+  constructor(endpoint, options = {}) {
+    this.logger = createLogger("RPCClient", LogLevel.DEBUG);
+    this.endpoint = endpoint;
+    this.options = {
+      timeout: options.timeout || 30000,
+      retryAttempts: options.retryAttempts || 3,
+      retryDelay: options.retryDelay || 1000,
+      ...options
     };
+
+    this.requestId = 1;
+    this.pendingRequests = new Map();
+
+    this.logger.info("constructor", `RPC client initialized: ${endpoint}`);
   }
 
   /**
-   * Creates a copy of this event
-   * @returns {InputEvent} New event instance with same properties
+   * Sends an RPC request to the server
+   * @param {string} method - RPC method name
+   * @param {Object} [params={}] - Method parameters
+   * @returns {Promise<*>} Promise resolving to the result
    */
-  clone() {
-    const cloned = new InputEvent(
-      this.type,
-      {
-        key: this.key,
-        code: this.code,
-        ctrlKey: this.ctrlKey,
-        altKey: this.altKey,
-        shiftKey: this.shiftKey,
-        metaKey: this.metaKey,
-        x: this.x,
-        y: this.y,
-        button: this.button
-      },
-      this.originalEvent
+  async call(method, params = {}) {
+    const id = this.requestId++;
+    const request = {
+      jsonrpc: "2.0",
+      method: method,
+      params: params,
+      id: id
+    };
+
+    this.logger.debug("call", `RPC request: ${method}`, { id, params });
+
+    try {
+      const response = await this._makeRequest(request);
+
+      if (response.error) {
+        throw new Error(`RPC Error: ${response.error.message}`);
+      }
+
+      this.logger.debug("call", `RPC response: ${method}`, {
+        id,
+        result: response.result
+      });
+      return response.result;
+    } catch (error) {
+      this.logger.error("call", `RPC call failed: ${method}`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Makes the actual HTTP request
+   * @param {Object} request - JSON-RPC request object
+   * @returns {Promise<Object>} Promise resolving to the response
+   * @private
+   */
+  async _makeRequest(request) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(
+      () => controller.abort(),
+      this.options.timeout
     );
 
-    cloned.id = this.id + "_clone";
-    return cloned;
+    try {
+      const response = await fetch(this.endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(request),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      clearTimeout(timeoutId);
+
+      if (error.name === "AbortError") {
+        throw new Error("Request timeout");
+      }
+
+      throw error;
+    }
   }
 }
 
 /**
- * @class InputBuffer
- * @description Manages buffering and batching of input events for efficient transmission
+ * @class ConnectionManager
+ * @description Manages connection state and reconnection logic
  */
-class InputBuffer {
+class ConnectionManager {
   /**
-   * Creates a new InputBuffer instance
-   * @param {Object} [options={}] - Buffer configuration options
-   * @param {number} [options.maxSize=100] - Maximum number of events to buffer
-   * @param {number} [options.flushInterval=50] - Auto-flush interval in milliseconds
-   * @param {number} [options.maxBatchSize=10] - Maximum events per batch transmission
+   * Creates a new ConnectionManager instance
+   * @param {Object} [options={}] - Connection configuration options
    */
   constructor(options = {}) {
-    this.logger = createLogger("InputBuffer", LogLevel.DEBUG);
+    this.logger = createLogger("ConnectionManager", LogLevel.INFO);
 
-    this.maxSize = options.maxSize || 100;
-    this.flushInterval = options.flushInterval || 50;
-    this.maxBatchSize = options.maxBatchSize || 10;
+    this.options = {
+      autoReconnect: options.autoReconnect !== false,
+      maxReconnectAttempts: options.maxReconnectAttempts || 10,
+      reconnectDelay: options.reconnectDelay || 5000,
+      ...options
+    };
 
-    this.events = [];
-    this.flushTimer = null;
-    this.flushCallback = null;
-    this.autoFlush = true;
+    this.state = ConnectionState.DISCONNECTED;
+    this.reconnectAttempts = 0;
+    this.lastConnectTime = 0;
+    this.connectionHistory = [];
 
-    // Buffer statistics
-    this.totalEvents = 0;
-    this.totalFlushed = 0;
-    this.lastFlushTime = 0;
-    this.droppedEvents = 0;
+    // Event callbacks
+    this.onStateChange = null;
+    this.onError = null;
 
     this.logger.info(
       "constructor",
-      `Input buffer initialized: maxSize=${this.maxSize}, flushInterval=${
-        this.flushInterval
-      }ms`
+      "Connection manager initialized",
+      this.options
     );
   }
 
   /**
-   * Adds an event to the buffer
-   * @param {InputEvent} event - Event to add
-   * @returns {boolean} True if event was added successfully
+   * Sets the connection state and notifies listeners
+   * @param {string} newState - New connection state
+   * @param {string} [reason] - Reason for state change
+   * @param {Object} [metadata] - Additional state metadata
    */
-  addEvent(event) {
-    if (!(event instanceof InputEvent)) {
-      this.logger.error(
-        "addEvent",
-        "Invalid event type, expected InputEvent instance"
-      );
-      return false;
-    }
+  setState(newState, reason = null, metadata = {}) {
+    const previousState = this.state;
+    this.state = newState;
 
-    // Check buffer capacity
-    if (this.events.length >= this.maxSize) {
-      // Remove oldest event to make room
-      const dropped = this.events.shift();
-      this.droppedEvents++;
-      this.logger.warn("addEvent", `Buffer full, dropped event: ${dropped.id}`);
-    }
-
-    this.events.push(event);
-    this.totalEvents++;
-
-    this.logger.debug(
-      "addEvent",
-      `Event added to buffer: ${event.getKeyString() || event.type}`,
-      {
-        bufferSize: this.events.length,
-        eventId: event.id
-      }
-    );
-
-    // Schedule auto-flush if enabled
-    if (this.autoFlush && this.flushCallback) {
-      this._scheduleFlush();
-    }
-
-    return true;
-  }
-
-  /**
-   * Schedules an automatic flush of the buffer
-   * @private
-   */
-  _scheduleFlush() {
-    if (this.flushTimer) {
-      clearTimeout(this.flushTimer);
-    }
-
-    this.flushTimer = setTimeout(() => {
-      this.flush();
-    }, this.flushInterval);
-  }
-
-  /**
-   * Flushes pending events from the buffer
-   * @param {boolean} [force=false] - Whether to flush even if buffer is small
-   * @returns {Array<InputEvent>} Array of events that were flushed
-   */
-  flush(force = false) {
-    if (this.events.length === 0) {
-      this.logger.debug("flush", "No events to flush");
-      return [];
-    }
-
-    // Don't flush small batches unless forced
-    if (
-      !force &&
-      this.events.length < 3 &&
-      Date.now() - this.lastFlushTime < this.flushInterval * 2
-    ) {
-      this.logger.debug("flush", "Deferring flush for larger batch");
-      return [];
-    }
-
-    const batchSize = Math.min(this.events.length, this.maxBatchSize);
-    const flushedEvents = this.events.splice(0, batchSize);
-
-    this.totalFlushed += flushedEvents.length;
-    this.lastFlushTime = Date.now();
-
-    if (this.flushTimer) {
-      clearTimeout(this.flushTimer);
-      this.flushTimer = null;
-    }
-
-    this.logger.debug(
-      "flush",
-      `Flushed ${flushedEvents.length} events from buffer`,
-      {
-        remaining: this.events.length,
-        batchIds: flushedEvents.map(e => e.id)
-      }
-    );
-
-    // Call flush callback if registered
-    if (this.flushCallback && flushedEvents.length > 0) {
-      try {
-        this.flushCallback(flushedEvents);
-      } catch (error) {
-        this.logger.error("flush", "Error in flush callback", error);
-      }
-    }
-
-    // Schedule next flush if more events remain
-    if (this.autoFlush && this.events.length > 0 && this.flushCallback) {
-      this._scheduleFlush();
-    }
-
-    return flushedEvents;
-  }
-
-  /**
-   * Sets the callback function for automatic flushing
-   * @param {Function} callback - Function to call with flushed events
-   */
-  setFlushCallback(callback) {
-    if (typeof callback !== "function") {
-      this.logger.error("setFlushCallback", "Callback must be a function");
-      return;
-    }
-
-    this.flushCallback = callback;
-    this.logger.debug("setFlushCallback", "Flush callback registered");
-
-    // Start auto-flushing if there are pending events
-    if (this.autoFlush && this.events.length > 0) {
-      this._scheduleFlush();
-    }
-  }
-
-  /**
-   * Enables or disables automatic flushing
-   * @param {boolean} enabled - Whether to enable auto-flush
-   */
-  setAutoFlush(enabled) {
-    this.autoFlush = Boolean(enabled);
-
-    if (!this.autoFlush && this.flushTimer) {
-      clearTimeout(this.flushTimer);
-      this.flushTimer = null;
-    }
-
-    this.logger.debug(
-      "setAutoFlush",
-      `Auto-flush ${enabled ? "enabled" : "disabled"}`
-    );
-  }
-
-  /**
-   * Gets the number of pending events in buffer
-   * @returns {number} Number of buffered events
-   */
-  size() {
-    return this.events.length;
-  }
-
-  /**
-   * Checks if buffer is empty
-   * @returns {boolean} True if no events are buffered
-   */
-  isEmpty() {
-    return this.events.length === 0;
-  }
-
-  /**
-   * Clears all buffered events
-   * @returns {number} Number of events that were cleared
-   */
-  clear() {
-    const clearedCount = this.events.length;
-    this.events = [];
-
-    if (this.flushTimer) {
-      clearTimeout(this.flushTimer);
-      this.flushTimer = null;
-    }
-
-    this.logger.info("clear", `Cleared ${clearedCount} events from buffer`);
-    return clearedCount;
-  }
-
-  /**
-   * Gets buffer statistics and performance metrics
-   * @returns {Object} Buffer statistics
-   */
-  getStats() {
-    return {
-      currentSize: this.events.length,
-      maxSize: this.maxSize,
-      totalEvents: this.totalEvents,
-      totalFlushed: this.totalFlushed,
-      droppedEvents: this.droppedEvents,
-      autoFlush: this.autoFlush,
-      flushInterval: this.flushInterval,
-      maxBatchSize: this.maxBatchSize,
-      lastFlushTime: this.lastFlushTime,
-      hasFlushCallback: !!this.flushCallback
+    const stateChange = {
+      newState,
+      previousState,
+      reason,
+      timestamp: Date.now(),
+      metadata
     };
-  }
-}
 
-/**
- * @class InputStatistics
- * @description Tracks input event statistics and patterns for performance monitoring
- */
-class InputStatistics {
-  /**
-   * Creates a new InputStatistics instance
-   */
-  constructor() {
-    this.logger = createLogger("InputStatistics", LogLevel.DEBUG);
+    this.connectionHistory.push(stateChange);
 
-    // Event counters
-    this.totalEvents = 0;
-    this.keyEvents = 0;
-    this.mouseEvents = 0;
-    this.focusEvents = 0;
+    // Limit history size
+    if (this.connectionHistory.length > 50) {
+      this.connectionHistory.shift();
+    }
 
-    // Timing statistics
-    this.lastInputTime = 0;
-    this.firstInputTime = 0;
-    this.totalInputTime = 0;
+    this.logger.info(
+      "setState",
+      `Connection state: ${previousState} -> ${newState}`,
+      { reason }
+    );
 
-    // Event type breakdown
-    this.eventTypes = new Map();
-    this.keyFrequency = new Map();
-
-    // Performance metrics
-    this.avgEventsPerSecond = 0;
-    this.peakEventsPerSecond = 0;
-    this.lastSecondEvents = [];
-
-    this.logger.info("constructor", "Input statistics tracker initialized");
+    if (this.onStateChange) {
+      try {
+        this.onStateChange(stateChange);
+      } catch (error) {
+        this.logger.error("setState", "State change callback error", error);
+      }
+    }
   }
 
   /**
-   * Records an input event for statistics tracking
-   * @param {InputEvent} event - Event to record
+   * Records an error and potentially triggers reconnection
+   * @param {Error} error - Error that occurred
+   * @param {string} [context] - Context where error occurred
    */
-  recordEvent(event) {
-    if (!(event instanceof InputEvent)) {
-      this.logger.warn("recordEvent", "Invalid event type for statistics");
-      return;
-    }
+  handleError(error, context = "unknown") {
+    this.logger.error("handleError", `Connection error in ${context}`, error);
 
-    const now = Date.now();
-
-    // Update counters
-    this.totalEvents++;
-    if (this.firstInputTime === 0) {
-      this.firstInputTime = now;
-    }
-    this.lastInputTime = now;
-
-    // Update event type counters
-    if (event.isKeyboardEvent()) {
-      this.keyEvents++;
-
-      // Track key frequency
-      const keyString = event.getKeyString();
-      if (keyString) {
-        this.keyFrequency.set(
-          keyString,
-          (this.keyFrequency.get(keyString) || 0) + 1
+    if (this.onError) {
+      try {
+        this.onError(error, context);
+      } catch (callbackError) {
+        this.logger.error(
+          "handleError",
+          "Error callback failed",
+          callbackError
         );
       }
-    } else if (event.isMouseEvent()) {
-      this.mouseEvents++;
-    } else if (
-      event.type === InputEventType.FOCUS ||
-      event.type === InputEventType.BLUR
-    ) {
-      this.focusEvents++;
     }
 
-    // Track event type distribution
-    this.eventTypes.set(event.type, (this.eventTypes.get(event.type) || 0) + 1);
-
-    // Update performance metrics
-    this._updatePerformanceMetrics(now);
-
-    this.logger.debug(
-      "recordEvent",
-      `Event recorded: ${event.getKeyString() || event.type}`,
-      {
-        totalEvents: this.totalEvents,
-        eventType: event.type
-      }
-    );
-  }
-
-  /**
-   * Updates performance metrics including events per second
-   * @param {number} now - Current timestamp
-   * @private
-   */
-  _updatePerformanceMetrics(now) {
-    // Add current event to recent events list
-    this.lastSecondEvents.push(now);
-
-    // Remove events older than 1 second
-    const oneSecondAgo = now - 1000;
-    this.lastSecondEvents = this.lastSecondEvents.filter(
-      time => time > oneSecondAgo
-    );
-
-    // Calculate current events per second
-    const currentEPS = this.lastSecondEvents.length;
-    if (currentEPS > this.peakEventsPerSecond) {
-      this.peakEventsPerSecond = currentEPS;
-    }
-
-    // Calculate average events per second
-    if (this.firstInputTime > 0) {
-      const totalTimeSeconds = (now - this.firstInputTime) / 1000;
-      this.avgEventsPerSecond =
-        totalTimeSeconds > 0 ? this.totalEvents / totalTimeSeconds : 0;
-    }
-  }
-
-  /**
-   * Gets the most frequently used keys
-   * @param {number} [limit=10] - Maximum number of keys to return
-   * @returns {Array<{key: string, count: number}>} Top keys by frequency
-   */
-  getTopKeys(limit = 10) {
-    const sortedKeys = Array.from(this.keyFrequency.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, limit)
-      .map(([key, count]) => ({ key, count }));
-
-    this.logger.debug("getTopKeys", `Retrieved top ${sortedKeys.length} keys`);
-    return sortedKeys;
-  }
-
-  /**
-   * Gets input timing patterns and metrics
-   * @returns {Object} Timing analysis data
-   */
-  getTimingAnalysis() {
-    const now = Date.now();
-    const totalTime = this.lastInputTime - this.firstInputTime;
-    const sessionDuration = now - this.firstInputTime;
-
-    return {
-      totalEvents: this.totalEvents,
-      sessionDuration: sessionDuration,
-      activeInputTime: totalTime,
-      lastInputAge: now - this.lastInputTime,
-      avgEventsPerSecond: parseFloat(this.avgEventsPerSecond.toFixed(2)),
-      peakEventsPerSecond: this.peakEventsPerSecond,
-      currentEventsPerSecond: this.lastSecondEvents.length,
-      inputDensity:
-        totalTime > 0
-          ? parseFloat((this.totalEvents / (totalTime / 1000)).toFixed(2))
-          : 0
-    };
-  }
-
-  /**
-   * Gets complete statistics summary
-   * @returns {Object} Complete statistics data
-   */
-  getStats() {
-    const timing = this.getTimingAnalysis();
-    const topKeys = this.getTopKeys(5);
-
-    // Convert Maps to objects for JSON serialization
-    const eventTypeDistribution = {};
-    for (const [type, count] of this.eventTypes) {
-      eventTypeDistribution[type] = count;
-    }
-
-    const stats = {
-      totals: {
-        totalEvents: this.totalEvents,
-        keyEvents: this.keyEvents,
-        mouseEvents: this.mouseEvents,
-        focusEvents: this.focusEvents
-      },
-      timing: timing,
-      distribution: eventTypeDistribution,
-      topKeys: topKeys,
-      performance: {
-        avgEventsPerSecond: timing.avgEventsPerSecond,
-        peakEventsPerSecond: this.peakEventsPerSecond,
-        currentEventsPerSecond: timing.currentEventsPerSecond
-      }
-    };
-
-    this.logger.debug("getStats", "Retrieved complete statistics", {
-      totalEvents: this.totalEvents,
-      keyTypes: this.keyFrequency.size
+    // Set error state
+    this.setState(ConnectionState.ERROR, `error_in_${context}`, {
+      error: error.message,
+      errorType: error.name
     });
 
-    return stats;
+    // Attempt reconnection if enabled
+    if (this.options.autoReconnect && this.shouldReconnect()) {
+      this._scheduleReconnect();
+    }
   }
 
   /**
-   * Resets all statistics to initial state
+   * Determines if reconnection should be attempted
+   * @returns {boolean} True if reconnection should be attempted
    */
-  reset() {
+  shouldReconnect() {
+    return (
+      this.reconnectAttempts < this.options.maxReconnectAttempts &&
+      this.state !== ConnectionState.DISCONNECTED
+    );
+  }
+
+  /**
+   * Schedules a reconnection attempt
+   * @private
+   */
+  _scheduleReconnect() {
+    this.reconnectAttempts++;
+
+    this.setState(ConnectionState.RECONNECTING, "scheduled_reconnect", {
+      attempt: this.reconnectAttempts,
+      maxAttempts: this.options.maxReconnectAttempts
+    });
+
+    const delay =
+      this.options.reconnectDelay * Math.min(this.reconnectAttempts, 5);
+
     this.logger.info(
-      "reset",
-      `Resetting statistics (had ${this.totalEvents} events)`
+      "_scheduleReconnect",
+      `Reconnect attempt ${this.reconnectAttempts} in ${delay}ms`
     );
 
-    this.totalEvents = 0;
-    this.keyEvents = 0;
-    this.mouseEvents = 0;
-    this.focusEvents = 0;
-    this.lastInputTime = 0;
-    this.firstInputTime = 0;
-    this.totalInputTime = 0;
-    this.avgEventsPerSecond = 0;
-    this.peakEventsPerSecond = 0;
-    this.lastSecondEvents = [];
+    setTimeout(() => {
+      if (this.state === ConnectionState.RECONNECTING) {
+        this._attemptReconnect();
+      }
+    }, delay);
+  }
 
-    this.eventTypes.clear();
-    this.keyFrequency.clear();
+  /**
+   * Attempts to reconnect
+   * @private
+   */
+  _attemptReconnect() {
+    this.logger.info(
+      "_attemptReconnect",
+      `Attempting reconnection (${this.reconnectAttempts}/${
+        this.options.maxReconnectAttempts
+      })`
+    );
+
+    // This will be called by the GameClient
+    if (this.onReconnectAttempt) {
+      this.onReconnectAttempt();
+    }
+  }
+
+  /**
+   * Resets reconnection state after successful connection
+   */
+  resetReconnection() {
+    this.reconnectAttempts = 0;
+    this.lastConnectTime = Date.now();
+    this.logger.debug("resetReconnection", "Reconnection state reset");
+  }
+
+  /**
+   * Gets connection statistics
+   * @returns {Object} Connection statistics
+   */
+  getStats() {
+    return {
+      state: this.state,
+      reconnectAttempts: this.reconnectAttempts,
+      maxReconnectAttempts: this.options.maxReconnectAttempts,
+      lastConnectTime: this.lastConnectTime,
+      historyLength: this.connectionHistory.length,
+      autoReconnect: this.options.autoReconnect
+    };
   }
 }
 
 /**
- * @class InputManager
- * @description Main input management class coordinating event capture, buffering, and transmission
+ * @class GameClient
+ * @description Main game client class coordinating server communication and state management
  */
-class InputManager {
+class GameClient {
   /**
-   * Creates a new InputManager instance
-   * @param {HTMLElement} targetElement - Element to attach input listeners to
-   * @param {Object} [options={}] - Configuration options
-   * @param {Object} [options.buffer] - Buffer configuration options
-   * @param {boolean} [options.captureKeyboard=true] - Whether to capture keyboard events
-   * @param {boolean} [options.captureMouse=false] - Whether to capture mouse events
-   * @param {boolean} [options.captureFocus=true] - Whether to capture focus events
-   * @param {Array<string>} [options.preventDefaultKeys] - Keys to prevent default behavior
+   * Creates a new GameClient instance
+   * @param {Object} [options={}] - Client configuration options
    */
-  constructor(targetElement, options = {}) {
-    this.logger = createLogger("InputManager", LogLevel.INFO);
+  constructor(options = {}) {
+    this.logger = createLogger("GameClient", LogLevel.INFO);
 
-    this.targetElement = targetElement;
-    this.captureKeyboard = options.captureKeyboard !== false;
-    this.captureMouse = options.captureMouse === true;
-    this.captureFocus = options.captureFocus !== false;
-    this.preventDefaultKeys = options.preventDefaultKeys || [
-      "ArrowUp",
-      "ArrowDown",
-      "ArrowLeft",
-      "ArrowRight",
-      "Tab",
-      "Space",
-      "Enter",
-      "Escape"
-    ];
+    this.options = {
+      rpcEndpoint: options.rpcEndpoint || "/rpc",
+      pollInterval: options.pollInterval || 100,
+      fastPollInterval: options.fastPollInterval || 50,
+      ...options
+    };
 
-    // Initialize components
-    this.buffer = new InputBuffer(options.buffer);
-    this.statistics = new InputStatistics();
+    // Core components
+    this.rpcClient = new RPCClient(this.options.rpcEndpoint, options.rpc);
+    this.connectionManager = new ConnectionManager(options.connection);
+    this.inputManager = null;
 
-    // Event listener management
-    this.eventListeners = new Map();
-    this.isListening = false;
+    // Game state
+    this.gameState = new GameState();
+    this.sessionId = null;
+    this.lastStateVersion = 0;
 
-    // Input processing
-    this.inputProcessor = null;
-    this.processingEnabled = true;
+    // Polling and updates
+    this.pollTimer = null;
+    this.isPolling = false;
+    this.pollInterval = this.options.pollInterval;
 
-    this.logger.info("constructor", "Input manager initialized", {
-      captureKeyboard: this.captureKeyboard,
-      captureMouse: this.captureMouse,
-      captureFocus: this.captureFocus,
-      preventDefaultKeys: this.preventDefaultKeys.length
+    // Event handlers
+    this.onStateUpdate = null;
+    this.onConnectionChange = null;
+    this.onError = null;
+
+    this._setupConnectionManager();
+
+    this.logger.info("constructor", "Game client initialized", {
+      rpcEndpoint: this.options.rpcEndpoint,
+      pollInterval: this.options.pollInterval
     });
   }
 
   /**
-   * Starts listening for input events on the target element
-   * @returns {boolean} True if listening was started successfully
+   * Sets up connection manager event handlers
+   * @private
    */
-  startListening() {
-    if (this.isListening) {
-      this.logger.warn("startListening", "Already listening for input events");
-      return false;
+  _setupConnectionManager() {
+    this.connectionManager.onStateChange = stateChange => {
+      if (this.onConnectionChange) {
+        this.onConnectionChange(stateChange);
+      }
+
+      // Adjust polling based on connection state
+      this._adjustPolling(stateChange.newState);
+    };
+
+    this.connectionManager.onError = (error, context) => {
+      if (this.onError) {
+        this.onError(error, context);
+      }
+    };
+
+    this.connectionManager.onReconnectAttempt = () => {
+      this._attemptReconnection();
+    };
+  }
+
+  /**
+   * Adjusts polling interval based on connection state
+   * @param {string} state - Current connection state
+   * @private
+   */
+  _adjustPolling(state) {
+    if (state === ConnectionState.PLAYING) {
+      this.pollInterval = this.options.fastPollInterval;
+    } else {
+      this.pollInterval = this.options.pollInterval;
     }
 
-    if (!this.targetElement) {
-      this.logger.error("startListening", "No target element provided");
-      return false;
-    }
+    this.logger.debug(
+      "_adjustPolling",
+      `Poll interval adjusted to ${this.pollInterval}ms for state: ${state}`
+    );
+  }
 
-    this.logger.enter("startListening");
+  /**
+   * Connects to the game server
+   * @param {Object} connectionParams - Connection parameters
+   * @param {string} connectionParams.host - Server hostname
+   * @param {number} connectionParams.port - Server port
+   * @param {string} connectionParams.username - Username
+   * @param {string} connectionParams.password - Password
+   * @returns {Promise<void>} Promise that resolves when connected
+   */
+  async connect(connectionParams) {
+    this.logger.enter("connect", connectionParams);
+
+    this.connectionManager.setState(
+      ConnectionState.CONNECTING,
+      "user_initiated"
+    );
 
     try {
-      this._attachEventListeners();
-      this.isListening = true;
-      this.logger.info("startListening", "Input event listening started");
-      return true;
+      const result = await this.rpcClient.call(
+        RPCMethod.CONNECT,
+        connectionParams
+      );
+
+      this.sessionId = result.sessionId;
+      this.connectionManager.setState(
+        ConnectionState.CONNECTED,
+        "server_connected"
+      );
+      this.connectionManager.resetReconnection();
+
+      // Start state polling
+      this._startPolling();
+
+      this.logger.exit("connect", { sessionId: this.sessionId });
     } catch (error) {
-      this.logger.error("startListening", "Failed to start listening", error);
-      return false;
+      this.connectionManager.handleError(error, "connect");
+      throw error;
     }
   }
 
   /**
-   * Stops listening for input events
-   * @returns {boolean} True if listening was stopped successfully
+   * Disconnects from the game server
+   * @returns {Promise<void>} Promise that resolves when disconnected
    */
-  stopListening() {
-    if (!this.isListening) {
-      this.logger.debug("stopListening", "Not currently listening");
-      return false;
+  async disconnect() {
+    this.logger.enter("disconnect");
+
+    this._stopPolling();
+
+    if (this.sessionId) {
+      try {
+        await this.rpcClient.call(RPCMethod.DISCONNECT, {
+          sessionId: this.sessionId
+        });
+      } catch (error) {
+        this.logger.warn("disconnect", "Disconnect RPC failed", error);
+      }
     }
 
-    this.logger.enter("stopListening");
+    this.sessionId = null;
+    this.connectionManager.setState(
+      ConnectionState.DISCONNECTED,
+      "user_initiated"
+    );
+
+    this.logger.exit("disconnect");
+  }
+
+  /**
+   * Starts the state polling loop
+   * @private
+   */
+  _startPolling() {
+    if (this.isPolling) {
+      return;
+    }
+
+    this.isPolling = true;
+    this._scheduleNextPoll();
+
+    this.logger.debug(
+      "_startPolling",
+      `State polling started with ${this.pollInterval}ms interval`
+    );
+  }
+
+  /**
+   * Stops the state polling loop
+   * @private
+   */
+  _stopPolling() {
+    this.isPolling = false;
+
+    if (this.pollTimer) {
+      clearTimeout(this.pollTimer);
+      this.pollTimer = null;
+    }
+
+    this.logger.debug("_stopPolling", "State polling stopped");
+  }
+
+  /**
+   * Schedules the next poll
+   * @private
+   */
+  _scheduleNextPoll() {
+    if (!this.isPolling) {
+      return;
+    }
+
+    this.pollTimer = setTimeout(() => {
+      this._pollGameState();
+    }, this.pollInterval);
+  }
+
+  /**
+   * Polls the server for game state updates
+   * @private
+   */
+  async _pollGameState() {
+    if (!this.isPolling || !this.sessionId) {
+      return;
+    }
 
     try {
-      this._detachEventListeners();
-      this.isListening = false;
-      this.logger.info("stopListening", "Input event listening stopped");
-      return true;
+      const result = await this.rpcClient.call(RPCMethod.GET_STATE, {
+        sessionId: this.sessionId,
+        version: this.lastStateVersion
+      });
+
+      if (result.state) {
+        this._updateGameState(result.state);
+      }
+
+      // Update connection state based on game state
+      if (result.connectionState) {
+        this.connectionManager.setState(
+          result.connectionState,
+          "server_update",
+          { polled: true }
+        );
+      }
+    } catch (error) {
+      this.connectionManager.handleError(error, "poll");
+    }
+
+    // Schedule next poll
+    this._scheduleNextPoll();
+  }
+
+  /**
+   * Updates the local game state
+   * @param {Object} stateData - State data from server
+   * @private
+   */
+  _updateGameState(stateData) {
+    if (stateData.version > this.lastStateVersion) {
+      this.gameState.applyChanges(stateData);
+      this.lastStateVersion = stateData.version;
+
+      if (this.onStateUpdate) {
+        try {
+          this.onStateUpdate(this.gameState);
+        } catch (error) {
+          this.logger.error(
+            "_updateGameState",
+            "State update callback error",
+            error
+          );
+        }
+      }
+
+      this.logger.debug(
+        "_updateGameState",
+        `Game state updated to version ${this.lastStateVersion}`
+      );
+    }
+  }
+
+  /**
+   * Sets up input management for the specified element
+   * @param {HTMLElement} element - Element to capture input from
+   * @param {Object} [inputOptions={}] - Input manager options
+   */
+  setupInput(element, inputOptions = {}) {
+    if (this.inputManager) {
+      this.inputManager.destroy();
+    }
+
+    this.inputManager = new InputManager(element, inputOptions);
+
+    // Set up input processing
+    this.inputManager.setFlushCallback(events => {
+      this._sendInputEvents(events);
+    });
+
+    this.inputManager.startListening();
+
+    this.logger.info("setupInput", "Input management configured");
+  }
+
+  /**
+   * Sends input events to the server
+   * @param {Array<InputEvent>} events - Input events to send
+   * @private
+   */
+  async _sendInputEvents(events) {
+    if (!this.sessionId || events.length === 0) {
+      return;
+    }
+
+    try {
+      const inputData = events.map(event => event.toJSON());
+
+      await this.rpcClient.call(RPCMethod.SEND_INPUT, {
+        sessionId: this.sessionId,
+        events: inputData
+      });
+
+      // Mark events as sent
+      events.forEach(event => event.markProcessed(true));
+
+      this.logger.debug(
+        "_sendInputEvents",
+        `Sent ${events.length} input events`
+      );
     } catch (error) {
       this.logger.error(
-        "stopListening",
-        "Error while stopping listening",
+        "_sendInputEvents",
+        "Failed to send input events",
         error
       );
-      return false;
+
+      // Mark events as failed
+      events.forEach(event => event.markProcessed(false));
+
+      this.connectionManager.handleError(error, "input");
     }
   }
 
   /**
-   * Attaches DOM event listeners to the target element
+   * Attempts reconnection to the server
    * @private
    */
-  _attachEventListeners() {
-    this.logger.debug("_attachEventListeners", "Attaching event listeners");
-
-    if (this.captureKeyboard) {
-      this._addListener("keydown", this._handleKeyDown.bind(this));
-      this._addListener("keyup", this._handleKeyUp.bind(this));
-    }
-
-    if (this.captureMouse) {
-      this._addListener("click", this._handleMouseClick.bind(this));
-      this._addListener("mousemove", this._handleMouseMove.bind(this));
-    }
-
-    if (this.captureFocus) {
-      this._addListener("focus", this._handleFocus.bind(this));
-      this._addListener("blur", this._handleBlur.bind(this));
-    }
-
-    // Ensure element can receive focus for keyboard events
-    if (this.captureKeyboard && this.targetElement.tabIndex < 0) {
-      this.targetElement.tabIndex = 0;
-      this.logger.debug(
-        "_attachEventListeners",
-        "Set tabIndex on target element"
-      );
+  async _attemptReconnection() {
+    // This would need to store original connection parameters
+    // For now, just emit an event that the application can handle
+    if (this.onReconnectionNeeded) {
+      this.onReconnectionNeeded();
     }
   }
 
   /**
-   * Adds an event listener and tracks it for cleanup
-   * @param {string} eventType - DOM event type
-   * @param {Function} handler - Event handler function
-   * @private
+   * Resizes the terminal
+   * @param {number} width - New width in characters
+   * @param {number} height - New height in characters
+   * @returns {Promise<void>} Promise that resolves when resize is complete
    */
-  _addListener(eventType, handler) {
-    this.targetElement.addEventListener(eventType, handler);
-    this.eventListeners.set(eventType, handler);
-    this.logger.debug("_addListener", `Added ${eventType} listener`);
-  }
-
-  /**
-   * Detaches all DOM event listeners
-   * @private
-   */
-  _detachEventListeners() {
-    this.logger.debug("_detachEventListeners", "Detaching event listeners");
-
-    for (const [eventType, handler] of this.eventListeners) {
-      this.targetElement.removeEventListener(eventType, handler);
-      this.logger.debug(
-        "_detachEventListeners",
-        `Removed ${eventType} listener`
-      );
+  async resize(width, height) {
+    if (!this.sessionId) {
+      throw new Error("Not connected");
     }
 
-    this.eventListeners.clear();
-  }
+    try {
+      await this.rpcClient.call(RPCMethod.RESIZE, {
+        sessionId: this.sessionId,
+        width: width,
+        height: height
+      });
 
-  /**
-   * Handles keyboard key down events
-   * @param {KeyboardEvent} event - DOM keyboard event
-   * @private
-   */
-  _handleKeyDown(event) {
-    this.logger.debug("_handleKeyDown", `Key pressed: ${event.key}`, {
-      code: event.code,
-      ctrlKey: event.ctrlKey,
-      altKey: event.altKey,
-      shiftKey: event.shiftKey,
-      metaKey: event.metaKey
-    });
-
-    // Prevent default behavior for specified keys
-    if (this.preventDefaultKeys.includes(event.key)) {
-      event.preventDefault();
-    }
-
-    const inputEvent = new InputEvent(
-      InputEventType.KEY_DOWN,
-      {
-        key: event.key,
-        code: event.code,
-        ctrlKey: event.ctrlKey,
-        altKey: event.altKey,
-        shiftKey: event.shiftKey,
-        metaKey: event.metaKey
-      },
-      event
-    );
-
-    this._processInputEvent(inputEvent);
-  }
-
-  /**
-   * Handles keyboard key up events
-   * @param {KeyboardEvent} event - DOM keyboard event
-   * @private
-   */
-  _handleKeyUp(event) {
-    const inputEvent = new InputEvent(
-      InputEventType.KEY_UP,
-      {
-        key: event.key,
-        code: event.code,
-        ctrlKey: event.ctrlKey,
-        altKey: event.altKey,
-        shiftKey: event.shiftKey,
-        metaKey: event.metaKey
-      },
-      event
-    );
-
-    this._processInputEvent(inputEvent);
-  }
-
-  /**
-   * Handles mouse click events
-   * @param {MouseEvent} event - DOM mouse event
-   * @private
-   */
-  _handleMouseClick(event) {
-    this.logger.debug(
-      "_handleMouseClick",
-      `Mouse clicked at (${event.offsetX}, ${event.offsetY})`,
-      {
-        button: event.button,
-        ctrlKey: event.ctrlKey,
-        altKey: event.altKey,
-        shiftKey: event.shiftKey
-      }
-    );
-
-    // Focus element on click for keyboard input
-    if (this.captureKeyboard) {
-      this.targetElement.focus();
-    }
-
-    const inputEvent = new InputEvent(
-      InputEventType.MOUSE_CLICK,
-      {
-        x: event.offsetX,
-        y: event.offsetY,
-        button: event.button,
-        ctrlKey: event.ctrlKey,
-        altKey: event.altKey,
-        shiftKey: event.shiftKey,
-        metaKey: event.metaKey
-      },
-      event
-    );
-
-    this._processInputEvent(inputEvent);
-  }
-
-  /**
-   * Handles mouse move events
-   * @param {MouseEvent} event - DOM mouse event
-   * @private
-   */
-  _handleMouseMove(event) {
-    // Only process if mouse button is pressed to avoid spam
-    if (event.buttons > 0) {
-      const inputEvent = new InputEvent(
-        InputEventType.MOUSE_MOVE,
-        {
-          x: event.offsetX,
-          y: event.offsetY,
-          button: event.buttons,
-          ctrlKey: event.ctrlKey,
-          altKey: event.altKey,
-          shiftKey: event.shiftKey,
-          metaKey: event.metaKey
-        },
-        event
-      );
-
-      this._processInputEvent(inputEvent);
+      this.logger.info("resize", `Terminal resized to ${width}x${height}`);
+    } catch (error) {
+      this.logger.error("resize", "Resize failed", error);
+      throw error;
     }
   }
 
   /**
-   * Handles focus events
-   * @param {FocusEvent} event - DOM focus event
-   * @private
+   * Gets the current connection state
+   * @returns {string} Current connection state
    */
-  _handleFocus(event) {
-    this.logger.debug("_handleFocus", "Element gained focus");
-
-    const inputEvent = new InputEvent(InputEventType.FOCUS, {}, event);
-    this._processInputEvent(inputEvent);
+  getConnectionState() {
+    return this.connectionManager.state;
   }
 
   /**
-   * Handles blur events
-   * @param {FocusEvent} event - DOM focus event
-   * @private
+   * Gets the current game state
+   * @returns {GameState} Current game state
    */
-  _handleBlur(event) {
-    this.logger.debug("_handleBlur", "Element lost focus");
-
-    const inputEvent = new InputEvent(InputEventType.BLUR, {}, event);
-    this._processInputEvent(inputEvent);
+  getGameState() {
+    return this.gameState;
   }
 
   /**
-   * Processes an input event through the manager pipeline
-   * @param {InputEvent} inputEvent - Event to process
-   * @private
-   */
-  _processInputEvent(inputEvent) {
-    if (!this.processingEnabled) {
-      this.logger.debug(
-        "_processInputEvent",
-        "Processing disabled, ignoring event"
-      );
-      return;
-    }
-
-    // Record statistics
-    this.statistics.recordEvent(inputEvent);
-
-    // Add to buffer
-    const added = this.buffer.addEvent(inputEvent);
-    if (!added) {
-      this.logger.warn("_processInputEvent", "Failed to add event to buffer");
-      return;
-    }
-
-    // Call custom processor if registered
-    if (this.inputProcessor) {
-      try {
-        this.inputProcessor(inputEvent);
-      } catch (error) {
-        this.logger.error(
-          "_processInputEvent",
-          "Error in input processor",
-          error
-        );
-      }
-    }
-  }
-
-  /**
-   * Sets a custom input event processor
-   * @param {Function} processor - Function to call for each input event
-   */
-  setInputProcessor(processor) {
-    if (typeof processor !== "function") {
-      this.logger.error("setInputProcessor", "Processor must be a function");
-      return;
-    }
-
-    this.inputProcessor = processor;
-    this.logger.info("setInputProcessor", "Custom input processor registered");
-  }
-
-  /**
-   * Sets the callback for buffer flush events
-   * @param {Function} callback - Function to call with batched events
-   */
-  setFlushCallback(callback) {
-    this.buffer.setFlushCallback(callback);
-    this.logger.info("setFlushCallback", "Buffer flush callback registered");
-  }
-
-  /**
-   * Manually flushes the input buffer
-   * @param {boolean} [force=true] - Whether to force flush regardless of buffer size
-   * @returns {Array<InputEvent>} Events that were flushed
-   */
-  flush(force = true) {
-    this.logger.debug("flush", "Manual buffer flush requested");
-    return this.buffer.flush(force);
-  }
-
-  /**
-   * Enables or disables input processing
-   * @param {boolean} enabled - Whether to enable processing
-   */
-  setProcessingEnabled(enabled) {
-    this.processingEnabled = Boolean(enabled);
-    this.logger.info(
-      "setProcessingEnabled",
-      `Input processing ${enabled ? "enabled" : "disabled"}`
-    );
-  }
-
-  /**
-   * Gets comprehensive input manager statistics
-   * @returns {Object} Complete statistics and status information
+   * Gets comprehensive client statistics
+   * @returns {Object} Client statistics
    */
   getStats() {
     return {
-      listening: this.isListening,
-      processingEnabled: this.processingEnabled,
-      targetElement: this.targetElement ? this.targetElement.tagName : null,
-      capture: {
-        keyboard: this.captureKeyboard,
-        mouse: this.captureMouse,
-        focus: this.captureFocus
+      connection: this.connectionManager.getStats(),
+      session: {
+        sessionId: this.sessionId,
+        lastStateVersion: this.lastStateVersion,
+        isPolling: this.isPolling,
+        pollInterval: this.pollInterval
       },
-      buffer: this.buffer.getStats(),
-      statistics: this.statistics.getStats(),
-      listeners: Array.from(this.eventListeners.keys()),
-      preventDefaultKeys: this.preventDefaultKeys
+      gameState: this.gameState.getStats(),
+      input: this.inputManager ? this.inputManager.getStats() : null
     };
   }
 
   /**
-   * Resets all statistics and clears buffers
-   */
-  reset() {
-    this.logger.info("reset", "Resetting input manager state");
-
-    this.buffer.clear();
-    this.statistics.reset();
-  }
-
-  /**
-   * Destroys the input manager and cleans up resources
+   * Destroys the client and cleans up resources
    */
   destroy() {
     this.logger.enter("destroy");
 
-    this.stopListening();
-    this.buffer.clear();
-    this.statistics.reset();
-    this.inputProcessor = null;
+    this._stopPolling();
 
-    this.logger.info("destroy", "Input manager destroyed");
+    if (this.inputManager) {
+      this.inputManager.destroy();
+      this.inputManager = null;
+    }
+
+    if (this.sessionId) {
+      // Attempt to disconnect cleanly
+      this.disconnect().catch(error => {
+        this.logger.warn("destroy", "Clean disconnect failed", error);
+      });
+    }
+
+    this.logger.info("destroy", "Game client destroyed");
   }
 }
 
 // Export public interface
-export {
-  InputManager,
-  InputEvent,
-  InputBuffer,
-  InputStatistics,
-  InputEventType,
-  SpecialKeys
-};
+export { GameClient, ConnectionState, RPCMethod, RPCClient, ConnectionManager };
 
-console.log("[InputManager] Input management module loaded successfully");
+console.log("[GameClient] Game client service module loaded successfully");

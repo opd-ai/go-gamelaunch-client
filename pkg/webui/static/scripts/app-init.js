@@ -139,7 +139,7 @@
 
     // Attempt dynamic import
     try {
-      import("./main.js")
+      import("../main.js")
         .then(() => {
           handleModuleLoadSuccess();
         })
@@ -167,22 +167,50 @@
    */
   function checkBrowserCompatibility() {
     const features = {
-      esModules: "import" in document.createElement("script"),
+      // Fixed: Better ES modules detection
+      esModules: (function() {
+        try {
+          // Check for dynamic import support
+          return (
+            typeof window.import === "undefined" &&
+            "noModule" in document.createElement("script")
+          );
+        } catch (e) {
+          return false;
+        }
+      })(),
       fetch: typeof fetch !== "undefined",
       promises: typeof Promise !== "undefined",
-      localStorage: typeof Storage !== "undefined",
+      localStorage: (function() {
+        try {
+          return typeof localStorage !== "undefined" && localStorage !== null;
+        } catch (e) {
+          return false;
+        }
+      })(),
       websockets: typeof WebSocket !== "undefined",
       canvas: !!document.createElement("canvas").getContext,
-      webgl: !!document.createElement("canvas").getContext("webgl")
+      webgl: (function() {
+        try {
+          const canvas = document.createElement("canvas");
+          return !!(
+            canvas.getContext("webgl") ||
+            canvas.getContext("experimental-webgl")
+          );
+        } catch (e) {
+          return false;
+        }
+      })()
     };
 
-    const required = ["esModules", "fetch", "promises", "canvas"];
+    const required = ["fetch", "promises", "canvas"];
     const missing = required.filter(feature => !features[feature]);
 
     return {
       features: features,
       compatible: missing.length === 0,
-      missing: missing
+      missing: missing,
+      esModulesSupported: features.esModules
     };
   }
 
@@ -208,6 +236,13 @@
         alert(`Compatibility Error: ${errorMessage}`);
       }
       return;
+    }
+
+    // Warning for ES modules but don't block
+    if (!compatibility.esModulesSupported) {
+      console.warn(
+        "[AppInit] ES modules may not be fully supported, but attempting to load anyway"
+      );
     }
 
     // Check network connectivity

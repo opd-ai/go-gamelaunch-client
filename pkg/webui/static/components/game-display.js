@@ -866,26 +866,27 @@ class GameDisplay {
     };
 
     // Core components
-    this.canvas = null;
-    this.gameClient = null;
-    this.renderer = null;
+    this.gameClient = new GameClient(options.client);
     this.viewport = null;
+    this.renderer = null;
     this.connectionStatus = null;
 
-    // UI elements
-    this.statusContainer = null;
-    this.performanceDisplay = null;
+    // DOM elements
+    this.element = null;
+    this.canvasElement = null;
+    this.performanceElement = null;
 
-    // State management
-    this.initialized = false;
+    // Rendering state
     this.isRendering = false;
-    this.animationFrame = null;
+    this.renderTimer = null;
+    this.lastRenderTime = 0;
 
+    // Initialize DOM structure
     this._createElement();
     this._initializeComponents();
     this._setupEventHandlers();
 
-    this.logger.info("constructor", "Game display component created", {
+    this.logger.info("constructor", "Game display initialized", {
       showConnectionStatus: this.options.showConnectionStatus,
       showPerformanceStats: this.options.showPerformanceStats
     });
@@ -896,57 +897,39 @@ class GameDisplay {
    * @private
    */
   _createElement() {
-    this.container.className = "game-display";
+    this.element = document.createElement("div");
+    this.element.className = "game-display";
 
-    // Apply base container styles
-    Object.assign(this.container.style, {
+    // Apply base styles
+    Object.assign(this.element.style, {
       position: "relative",
-      display: "flex",
-      flexDirection: "column",
       width: "100%",
       height: "100%",
       backgroundColor: "#000000",
-      overflow: "hidden"
+      overflow: "hidden",
+      fontFamily: "monospace"
     });
 
-    // Create main canvas
-    this.canvas = document.createElement("canvas");
-    this.canvas.className = "game-display__canvas";
-    Object.assign(this.canvas.style, {
-      display: "block",
+    // Create canvas for game rendering
+    this.canvasElement = document.createElement("canvas");
+    this.canvasElement.className = "game-canvas";
+    Object.assign(this.canvasElement.style, {
+      position: "absolute",
+      top: "0",
+      left: "0",
       width: "100%",
       height: "100%",
-      imageRendering: "pixelated", // Crisp pixel art
-      cursor: "default"
+      imageRendering: "pixelated"
     });
 
-    // Set initial canvas size
-    this.canvas.width = 800;
-    this.canvas.height = 600;
+    this.element.appendChild(this.canvasElement);
 
-    this.container.appendChild(this.canvas);
-
-    // Create status container if enabled
-    if (
-      this.options.showConnectionStatus ||
-      this.options.showPerformanceStats
-    ) {
-      this.statusContainer = document.createElement("div");
-      this.statusContainer.className = "game-display__status";
-      Object.assign(this.statusContainer.style, {
-        position: "absolute",
-        top: "8px",
-        right: "8px",
-        display: "flex",
-        flexDirection: "column",
-        gap: "8px",
-        zIndex: "10"
-      });
-
-      this.container.appendChild(this.statusContainer);
+    // Add to container
+    if (this.container) {
+      this.container.appendChild(this.element);
     }
 
-    this.logger.debug("_createElement", "Display DOM structure created");
+    this.logger.debug("_createElement", "DOM structure created");
   }
 
   /**
@@ -954,39 +937,44 @@ class GameDisplay {
    * @private
    */
   _initializeComponents() {
-    try {
-      // Initialize renderer
-      this.renderer = new TerminalRenderer(this.canvas, this.options.renderer);
+    // Initialize viewport manager
+    this.viewport = new ViewportManager(
+      this.canvasElement,
+      this.options.viewport
+    );
 
-      // Initialize viewport manager
-      this.viewport = new ViewportManager(this.canvas, this.options.viewport);
+    // Initialize terminal renderer
+    this.renderer = new TerminalRenderer(
+      this.canvasElement,
+      this.options.renderer
+    );
 
-      // Initialize game client
-      this.gameClient = new GameClient(this.canvas, this.options.client);
+    // Initialize connection status if enabled
+    if (this.options.showConnectionStatus) {
+      const statusContainer = document.createElement("div");
+      statusContainer.className = "connection-status-container";
+      Object.assign(statusContainer.style, {
+        position: "absolute",
+        top: "10px",
+        right: "10px",
+        zIndex: "100"
+      });
 
-      // Initialize connection status if enabled
-      if (this.options.showConnectionStatus && this.statusContainer) {
-        this.connectionStatus = new ConnectionStatus({
-          container: this.statusContainer,
-          showHistory: false,
-          showStatistics: true
-        });
-      }
+      this.connectionStatus = new ConnectionStatus({
+        container: statusContainer,
+        showHistory: true,
+        showStatistics: this.options.showPerformanceStats
+      });
 
-      // Initialize performance display if enabled
-      if (this.options.showPerformanceStats && this.statusContainer) {
-        this._createPerformanceDisplay();
-      }
-
-      this.logger.info("_initializeComponents", "Core components initialized");
-    } catch (error) {
-      this.logger.error(
-        "_initializeComponents",
-        "Component initialization failed",
-        error
-      );
-      throw error;
+      this.element.appendChild(statusContainer);
     }
+
+    // Create performance display if enabled
+    if (this.options.showPerformanceStats) {
+      this._createPerformanceDisplay();
+    }
+
+    this.logger.debug("_initializeComponents", "Core components initialized");
   }
 
   /**
@@ -994,24 +982,22 @@ class GameDisplay {
    * @private
    */
   _createPerformanceDisplay() {
-    this.performanceDisplay = document.createElement("div");
-    this.performanceDisplay.className = "game-display__performance";
-
-    Object.assign(this.performanceDisplay.style, {
+    this.performanceElement = document.createElement("div");
+    this.performanceElement.className = "performance-display";
+    Object.assign(this.performanceElement.style, {
+      position: "absolute",
+      top: "10px",
+      left: "10px",
       padding: "8px",
-      backgroundColor: "rgba(0, 0, 0, 0.8)",
-      color: "#00ff00",
+      backgroundColor: "rgba(0, 0, 0, 0.7)",
+      color: "#ffffff",
       fontFamily: "monospace",
-      fontSize: "11px",
+      fontSize: "12px",
       borderRadius: "4px",
-      minWidth: "200px"
+      zIndex: "99"
     });
 
-    this.statusContainer.appendChild(this.performanceDisplay);
-    this.logger.debug(
-      "_createPerformanceDisplay",
-      "Performance display created"
-    );
+    this.element.appendChild(this.performanceElement);
   }
 
   /**
@@ -1019,24 +1005,64 @@ class GameDisplay {
    * @private
    */
   _setupEventHandlers() {
-    // Game client events
-    this.canvas.addEventListener("gameClientstatechange", event => {
-      this._handleConnectionStateChange(event.detail);
-    });
+    // Handle game client events
+    this.gameClient.onStateUpdate = gameState => {
+      this._handleGameStateUpdate(gameState);
+    };
 
-    this.canvas.addEventListener("gameClientconnectionlost", event => {
-      this.logger.warn("_setupEventHandlers", "Connection lost", event.detail);
-    });
+    this.gameClient.onConnectionChange = connectionChange => {
+      this._handleConnectionStateChange(connectionChange);
+    };
 
-    // Canvas resize handling
-    const resizeObserver = new ResizeObserver(entries => {
-      for (const entry of entries) {
-        this._handleCanvasResize(entry.contentRect);
-      }
-    });
-    resizeObserver.observe(this.canvas);
+    this.gameClient.onError = (error, context) => {
+      this.logger.error(
+        "_setupEventHandlers",
+        `Game client error in ${context}`,
+        error
+      );
+    };
+
+    // Handle canvas resize - but only if canvasElement exists
+    if (this.canvasElement) {
+      const resizeObserver = new ResizeObserver(entries => {
+        for (const entry of entries) {
+          this._handleCanvasResize(entry.contentRect);
+        }
+      });
+
+      resizeObserver.observe(this.canvasElement);
+
+      // Store observer for cleanup
+      this.resizeObserver = resizeObserver;
+    } else {
+      this.logger.warn(
+        "_setupEventHandlers",
+        "Canvas element not available for resize observation"
+      );
+    }
 
     this.logger.debug("_setupEventHandlers", "Event handlers configured");
+  }
+
+  /**
+   * Handles game state updates from client
+   * @param {GameState} gameState - Updated game state
+   * @private
+   */
+  _handleGameStateUpdate(gameState) {
+    // Update viewport content dimensions
+    const cellDimensions = this.renderer.getCellDimensions();
+    this.viewport.updateContent(
+      gameState.width * cellDimensions.width,
+      gameState.height * cellDimensions.height,
+      cellDimensions.width,
+      cellDimensions.height
+    );
+
+    // Trigger render if we're actively rendering
+    if (this.isRendering) {
+      this.forceRender();
+    }
   }
 
   /**
@@ -1045,27 +1071,19 @@ class GameDisplay {
    * @private
    */
   _handleConnectionStateChange(detail) {
-    const { newState, reason } = detail;
-
-    // Update connection status display
     if (this.connectionStatus) {
-      const statusState = this._mapConnectionState(newState);
-      this.connectionStatus.updateStatus(statusState, reason);
-    }
-
-    // Start/stop rendering based on connection state
-    if (newState === ConnectionState.PLAYING) {
-      this._startRendering();
-    } else if (
-      newState === ConnectionState.DISCONNECTED ||
-      newState === ConnectionState.ERROR
-    ) {
-      this._stopRendering();
+      const statusState = this._mapConnectionState(detail.newState);
+      this.connectionStatus.updateStatus(
+        statusState,
+        detail.reason,
+        detail.metadata
+      );
     }
 
     this.logger.debug(
       "_handleConnectionStateChange",
-      `Connection state: ${newState}`
+      "Connection state updated",
+      detail
     );
   }
 
@@ -1076,17 +1094,17 @@ class GameDisplay {
    * @private
    */
   _mapConnectionState(clientState) {
-    const stateMap = {
-      [ConnectionState.DISCONNECTED]: StatusState.DISCONNECTED,
-      [ConnectionState.CONNECTING]: StatusState.CONNECTING,
-      [ConnectionState.CONNECTED]: StatusState.CONNECTED,
-      [ConnectionState.AUTHENTICATED]: StatusState.AUTHENTICATED,
-      [ConnectionState.PLAYING]: StatusState.PLAYING,
-      [ConnectionState.ERROR]: StatusState.ERROR,
-      [ConnectionState.RECONNECTING]: StatusState.RECONNECTING
+    const stateMapping = {
+      disconnected: StatusState.DISCONNECTED,
+      connecting: StatusState.CONNECTING,
+      connected: StatusState.CONNECTED,
+      authenticated: StatusState.AUTHENTICATED,
+      playing: StatusState.PLAYING,
+      error: StatusState.ERROR,
+      reconnecting: StatusState.RECONNECTING
     };
 
-    return stateMap[clientState] || StatusState.DISCONNECTED;
+    return stateMapping[clientState] || StatusState.DISCONNECTED;
   }
 
   /**
@@ -1095,24 +1113,31 @@ class GameDisplay {
    * @private
    */
   _handleCanvasResize(rect) {
-    const devicePixelRatio = window.devicePixelRatio || 1;
+    // Add null check as safety measure
+    if (!this.canvasElement) {
+      this.logger.warn(
+        "_handleCanvasResize",
+        "Canvas element is null, cannot handle resize"
+      );
+      return;
+    }
 
-    // Update canvas resolution for crisp rendering
-    this.canvas.width = rect.width * devicePixelRatio;
-    this.canvas.height = rect.height * devicePixelRatio;
-
-    // Scale context for high DPI displays
-    const context = this.canvas.getContext("2d");
-    context.scale(devicePixelRatio, devicePixelRatio);
+    // Update canvas internal dimensions
+    this.canvasElement.width = rect.width;
+    this.canvasElement.height = rect.height;
 
     // Update viewport
-    if (this.viewport) {
-      this.viewport.updateContent(this.canvas.width, this.canvas.height);
-    }
+    this.viewport.updateContent(
+      this.canvasElement.width,
+      this.canvasElement.height
+    );
+
+    // Force re-render
+    this.forceRender();
 
     this.logger.debug(
       "_handleCanvasResize",
-      `Canvas resized: ${rect.width}x${rect.height}`
+      `Canvas resized to ${rect.width}x${rect.height}`
     );
   }
 
@@ -1123,24 +1148,19 @@ class GameDisplay {
   async init() {
     this.logger.enter("init");
 
-    if (this.initialized) {
-      this.logger.warn("init", "Display already initialized");
-      return;
-    }
-
     try {
-      // Initialize game client
-      await this.gameClient.init();
+      // Set up input handling for the canvas
+      this.gameClient.setupInput(this.canvasElement, this.options.input);
 
-      // Set up tileset if available
-      const clientStats = this.gameClient.getStats();
-      if (clientStats.tileset) {
-        this.renderer.setTileset(this.gameClient.tileset);
+      // Update connection status to show we're ready
+      if (this.connectionStatus) {
+        this.connectionStatus.updateStatus(
+          StatusState.DISCONNECTED,
+          "display_ready"
+        );
       }
 
-      this.initialized = true;
-
-      this.logger.exit("init", { success: true });
+      this.logger.exit("init", "Display initialization completed");
     } catch (error) {
       this.logger.error("init", "Display initialization failed", error);
       throw error;
@@ -1159,7 +1179,7 @@ class GameDisplay {
     this.isRendering = true;
     this._renderLoop();
 
-    this.logger.info("_startRendering", "Rendering loop started");
+    this.logger.debug("_startRendering", "Rendering loop started");
   }
 
   /**
@@ -1167,18 +1187,14 @@ class GameDisplay {
    * @private
    */
   _stopRendering() {
-    if (!this.isRendering) {
-      return;
-    }
-
     this.isRendering = false;
 
-    if (this.animationFrame) {
-      cancelAnimationFrame(this.animationFrame);
-      this.animationFrame = null;
+    if (this.renderTimer) {
+      cancelAnimationFrame(this.renderTimer);
+      this.renderTimer = null;
     }
 
-    this.logger.info("_stopRendering", "Rendering loop stopped");
+    this.logger.debug("_stopRendering", "Rendering loop stopped");
   }
 
   /**
@@ -1190,36 +1206,31 @@ class GameDisplay {
       return;
     }
 
+    const now = performance.now();
+
     try {
       // Get current game state
-      const clientStats = this.gameClient.getStats();
-      if (clientStats.session && clientStats.session.gameState) {
-        const gameState = clientStats.session.gameState;
-
-        // Update viewport content size
-        const cellDimensions = this.renderer.getCellDimensions();
-        this.viewport.updateContent(
-          gameState.width * cellDimensions.width,
-          gameState.height * cellDimensions.height,
-          cellDimensions.width,
-          cellDimensions.height
-        );
-
-        // Render with viewport transformation
+      const gameState = this.gameClient.getGameState();
+      if (gameState) {
+        // Get viewport transformation
         const transform = this.viewport.getTransform();
+
+        // Render the game
         this.renderer.render(gameState, transform);
       }
 
       // Update performance display
-      if (this.performanceDisplay) {
+      if (this.options.showPerformanceStats) {
         this._updatePerformanceDisplay();
       }
+
+      this.lastRenderTime = now;
     } catch (error) {
-      this.logger.error("_renderLoop", "Rendering error", error);
+      this.logger.error("_renderLoop", "Render loop error", error);
     }
 
     // Schedule next frame
-    this.animationFrame = requestAnimationFrame(() => this._renderLoop());
+    this.renderTimer = requestAnimationFrame(() => this._renderLoop());
   }
 
   /**
@@ -1227,27 +1238,25 @@ class GameDisplay {
    * @private
    */
   _updatePerformanceDisplay() {
-    const renderStats = this.renderer.getPerformanceStats();
+    if (!this.performanceElement) {
+      return;
+    }
+
+    const rendererStats = this.renderer.getPerformanceStats();
     const clientStats = this.gameClient.getStats();
 
     const performanceHTML = `
       <div><strong>Performance</strong></div>
-      <div>FPS: ${renderStats.fps.toFixed(1)}</div>
-      <div>Frame Time: ${renderStats.lastFrameTime.toFixed(2)}ms</div>
-      <div>Cells: ${renderStats.renderStats.cellsRendered}</div>
-      <div>Mode: ${renderStats.mode}</div>
-      <div>Scale: ${this.viewport.scale.toFixed(2)}x</div>
-      <div>Polls: ${clientStats.totalPolls}</div>
-      ${
-        clientStats.session
-          ? `<div>Latency: ${clientStats.session.averageLatency.toFixed(
-              0
-            )}ms</div>`
-          : ""
-      }
+      <div>FPS: ${rendererStats.fps.toFixed(1)}</div>
+      <div>Frame Time: ${rendererStats.lastFrameTime.toFixed(1)}ms</div>
+      <div>Cells: ${rendererStats.renderStats.cellsRendered}</div>
+      <div>Poll Rate: ${
+        clientStats.session.isPolling ? "Active" : "Inactive"
+      }</div>
+      <div>State Version: ${clientStats.session.lastStateVersion}</div>
     `;
 
-    this.performanceDisplay.innerHTML = performanceHTML;
+    this.performanceElement.innerHTML = performanceHTML;
   }
 
   /**
@@ -1256,11 +1265,11 @@ class GameDisplay {
    */
   getStats() {
     return {
-      initialized: this.initialized,
       isRendering: this.isRendering,
-      client: this.gameClient ? this.gameClient.getStats() : null,
-      renderer: this.renderer ? this.renderer.getPerformanceStats() : null,
+      lastRenderTime: this.lastRenderTime,
       viewport: this.viewport ? this.viewport.getTransform() : null,
+      renderer: this.renderer ? this.renderer.getPerformanceStats() : null,
+      gameClient: this.gameClient ? this.gameClient.getStats() : null,
       connectionStatus: this.connectionStatus
         ? this.connectionStatus.getStatistics()
         : null
@@ -1271,27 +1280,25 @@ class GameDisplay {
    * Manually triggers a render update
    */
   forceRender() {
-    if (this.isRendering) {
-      this.logger.debug("forceRender", "Manual render triggered");
-      this._renderLoop();
+    if (!this.isRendering) {
+      this._startRendering();
     }
+  }
+
+  /**
+   * Starts the display with rendering
+   */
+  start() {
+    this.logger.info("start", "Starting game display");
+    this._startRendering();
   }
 
   /**
    * Stops the display and cleans up resources
    */
   stop() {
-    this.logger.enter("stop");
-
+    this.logger.info("stop", "Stopping game display");
     this._stopRendering();
-
-    if (this.gameClient) {
-      this.gameClient.stop();
-    }
-
-    this.initialized = false;
-
-    this.logger.info("stop", "Game display stopped");
   }
 
   /**
@@ -1300,28 +1307,39 @@ class GameDisplay {
   destroy() {
     this.logger.enter("destroy");
 
-    this.stop();
+    // Stop rendering
+    this._stopRendering();
 
-    // Destroy components
+    // Cleanup resize observer
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+      this.resizeObserver = null;
+    }
+
+    // Destroy game client
     if (this.gameClient) {
       this.gameClient.destroy();
+      this.gameClient = null;
     }
 
+    // Destroy connection status
     if (this.connectionStatus) {
       this.connectionStatus.destroy();
+      this.connectionStatus = null;
     }
 
-    // Clear DOM
-    if (this.container) {
-      this.container.innerHTML = "";
+    // Remove from DOM
+    if (this.element && this.element.parentNode) {
+      this.element.parentNode.removeChild(this.element);
     }
 
     // Clear references
-    this.canvas = null;
-    this.gameClient = null;
-    this.renderer = null;
+    this.element = null;
+    this.canvasElement = null;
+    this.performanceElement = null;
     this.viewport = null;
-    this.connectionStatus = null;
+    this.renderer = null;
+    this.container = null;
 
     this.logger.info("destroy", "Game display destroyed");
   }
