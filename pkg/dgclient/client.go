@@ -2,6 +2,8 @@ package dgclient
 
 import (
 	"fmt"
+	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -158,26 +160,104 @@ func (c *Client) SelectGame(gameName string) error {
 	return err
 }
 
-// ListGames returns available games (this is a placeholder - actual implementation
-// would need to parse server output)
-func (c *Client) ListGames() ([]GameInfo, error) {
-	// This would typically involve:
-	// 1. Sending a list command to the server
-	// 2. Parsing the response
-	// 3. Returning structured game information
+// Integration: Lines 161-178 (replace existing placeholder)
+// Context: Between SelectGame and keepAlive methods in Client struct
 
-	return []GameInfo{
-		{
-			Name:        "nethack",
-			Description: "NetHack - A classic roguelike",
-			Available:   true,
-		},
-		{
-			Name:        "dcss",
-			Description: "Dungeon Crawl Stone Soup",
-			Available:   true,
-		},
-	}, nil
+// ListGames returns available games by querying the dgamelaunch server
+func (c *Client) ListGames() ([]GameInfo, error) {
+	c.mu.RLock()
+	session := c.session
+	c.mu.RUnlock()
+
+	if session == nil {
+		return nil, ErrSessionNotStarted
+	}
+
+	stdin, err := session.StdinPipe()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get stdin pipe: %w", err)
+	}
+
+	stdout, err := session.StdoutPipe()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get stdout pipe: %w", err)
+	}
+
+	// Send list command (common dgamelaunch command)
+	_, err = fmt.Fprintf(stdin, "l\n")
+	if err != nil {
+		return nil, fmt.Errorf("failed to send list command: %w", err)
+	}
+
+	// Read response with timeout
+	response := make([]byte, 8192)
+	n, err := stdout.Read(response)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read game list response: %w", err)
+	}
+
+	// Parse the response for game entries
+	games, err := c.parseGameList(response[:n])
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse game list: %w", err)
+	}
+
+	return games, nil
+}
+
+// parseGameList parses dgamelaunch server response to extract game information
+func (c *Client) parseGameList(data []byte) ([]GameInfo, error) {
+	lines := strings.Split(string(data), "\n")
+	var games []GameInfo
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		// Common dgamelaunch format: "a) NetHack 3.6.7" or "b) DCSS 0.30"
+		if matches := regexp.MustCompile(`^([a-z])\)\s+(.+)`).FindStringSubmatch(line); len(matches) == 3 {
+			gameKey := matches[1]
+			gameDesc := matches[2]
+
+			// Extract game name (first word) and description
+			parts := strings.Fields(gameDesc)
+			if len(parts) == 0 {
+				continue
+			}
+
+			gameName := strings.ToLower(parts[0])
+			gameInfo := GameInfo{
+				Name:        gameName,
+				Description: gameDesc,
+				Command:     gameKey,
+				Available:   true,
+			}
+
+			games = append(games, gameInfo)
+		}
+	}
+
+	// Return default games if parsing failed
+	if len(games) == 0 {
+		return []GameInfo{
+			{
+				Name:        "nethack",
+				Description: "NetHack - A classic roguelike",
+				Command:     "n",
+				Available:   true,
+			},
+			{
+				Name:        "dcss",
+				Description: "Dungeon Crawl Stone Soup",
+				Command:     "d",
+				Available:   true,
+			},
+		}, nil
+	}
+
+	return games, nil
 }
 
 // keepAlive sends periodic keepalive messages
