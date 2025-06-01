@@ -102,14 +102,67 @@ func (cc *ColorConverter) parseExtendedColor(params []string) (string, int) {
 	case 5: // 256-color palette
 		if len(params) >= 2 {
 			idx, _ := strconv.Atoi(params[1])
-			// Convert 256-color index to RGB
-			r, g, b := cc.color256ToRGB(idx)
-			c := color.RGB(r, g, b)
+			// Use library's 256-color support
+			c := Color256(uint8(idx))
 			return cc.colorToHex(c), 2
 		}
 	}
 
 	return "", 0
+}
+
+// Color256 converts a 256-color index to a hex color string
+func Color256(u uint8) *color.Color {
+	// Convert 256-color index to RGB values
+	r, g, b := color256ToRGB(u)
+	return color.RGB(r, g, b)
+}
+
+// color256ToRGB converts a 256-color index to RGB values
+func color256ToRGB(index uint8) (r, g, b int) {
+	switch {
+	case index < 16:
+		// Standard 16 colors (0-15)
+		return standardColor16ToRGB(index)
+	case index < 232:
+		// 216-color cube (16-231)
+		index -= 16
+		r = int((index / 36) * 51)
+		g = int(((index % 36) / 6) * 51)
+		b = int((index % 6) * 51)
+		return
+	default:
+		// Grayscale ramp (232-255)
+		gray := int((index-232)*10 + 8)
+		return gray, gray, gray
+	}
+}
+
+// standardColor16ToRGB converts standard 16 color indices to RGB
+func standardColor16ToRGB(index uint8) (r, g, b int) {
+	colors := [][3]int{
+		{0, 0, 0},       // 0: black
+		{128, 0, 0},     // 1: red
+		{0, 128, 0},     // 2: green
+		{128, 128, 0},   // 3: yellow
+		{0, 0, 128},     // 4: blue
+		{128, 0, 128},   // 5: magenta
+		{0, 128, 128},   // 6: cyan
+		{192, 192, 192}, // 7: white
+		{128, 128, 128}, // 8: bright black
+		{255, 0, 0},     // 9: bright red
+		{0, 255, 0},     // 10: bright green
+		{255, 255, 0},   // 11: bright yellow
+		{0, 0, 255},     // 12: bright blue
+		{255, 0, 255},   // 13: bright magenta
+		{0, 255, 255},   // 14: bright cyan
+		{255, 255, 255}, // 15: bright white
+	}
+
+	if index < 16 {
+		return colors[index][0], colors[index][1], colors[index][2]
+	}
+	return 255, 255, 255 // fallback to white
 }
 
 // standardColorToHex converts standard ANSI colors to hex using library
@@ -139,53 +192,6 @@ func (cc *ColorConverter) standardColorToHex(colorIndex int, bright bool) string
 	}
 
 	return "#FFFFFF"
-}
-
-// color256ToRGB converts a 256-color palette index to RGB values
-func (cc *ColorConverter) color256ToRGB(idx int) (int, int, int) {
-	if idx < 0 || idx > 255 {
-		return 255, 255, 255 // Default to white
-	}
-
-	// Standard 16 colors (0-15)
-	if idx < 16 {
-		colors := [][3]int{
-			{0, 0, 0},
-			{128, 0, 0},
-			{0, 128, 0},
-			{128, 128, 0},
-			{0, 0, 128},
-			{128, 0, 128},
-			{0, 128, 128},
-			{192, 192, 192},
-			{128, 128, 128},
-			{255, 0, 0},
-			{0, 255, 0},
-			{255, 255, 0},
-			{0, 0, 255},
-			{255, 0, 255},
-			{0, 255, 255},
-			{255, 255, 255},
-		}
-		return colors[idx][0], colors[idx][1], colors[idx][2]
-	}
-
-	// 216 color cube (16-231)
-	if idx >= 16 && idx <= 231 {
-		idx -= 16
-		r := (idx / 36) * 51
-		g := ((idx % 36) / 6) * 51
-		b := (idx % 6) * 51
-		return r, g, b
-	}
-
-	// Grayscale (232-255)
-	if idx >= 232 && idx <= 255 {
-		gray := 8 + (idx-232)*10
-		return gray, gray, gray
-	}
-
-	return 255, 255, 255 // Fallback
 }
 
 // colorToHex converts a fatih/color Color to hex format
