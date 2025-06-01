@@ -2,19 +2,27 @@ package webui
 
 import (
 	"context"
-	"embed"
 	"encoding/json"
 	"fmt"
 	"image/png"
 	"net/http"
-	"strings"
 	"time"
+
+	_ "embed"
+
+	"log"
 
 	"github.com/opd-ai/go-gamelaunch-client/pkg/dgclient"
 )
 
-//go:embed static/*
-var staticFiles embed.FS
+//go:embed static/index.html
+var staticIndexHTML string
+
+//go:embed static/script.js
+var staticIndexJS string
+
+//go:embed static/style.css
+var staticIndexCSS string
 
 // WebUIOptions contains configuration for WebUI
 type WebUIOptions struct {
@@ -90,9 +98,32 @@ func (w *WebUI) setupRoutes() {
 	if w.options.StaticPath != "" {
 		// Serve from filesystem
 		w.mux.Handle("/", http.FileServer(http.Dir(w.options.StaticPath)))
+		//w.mux.Handle("/", http.StripPrefix("/static/", http.FileServer(http.Dir(w.options.StaticPath))))
 	} else {
 		// Serve embedded files
-		w.mux.Handle("/", http.FileServer(http.FS(staticFiles)))
+		w.mux.HandleFunc("/", func(rw http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/":
+				rw.Header().Set("Content-Type", "text/html; charset=utf-8")
+				rw.Write([]byte(staticIndexHTML))
+			case "/script.js":
+				rw.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+				rw.Write([]byte(staticIndexJS))
+			case "/style.css":
+				rw.Header().Set("Content-Type", "text/css; charset=utf-8")
+				rw.Write([]byte(staticIndexCSS))
+			case "/static/script.js":
+				rw.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+				rw.Write([]byte(staticIndexJS))
+			case "/static/style.css":
+				rw.Header().Set("Content-Type", "text/css; charset=utf-8")
+				rw.Write([]byte(staticIndexCSS))
+			default:
+				log.Printf("Serving static file: %s", r.URL.Path)
+				rw.Header().Set("Content-Type", "text/html; charset=utf-8")
+				rw.Write([]byte(staticIndexHTML))
+			}
+		})
 	}
 }
 
@@ -167,15 +198,25 @@ func (w *WebUI) handleRPC(rw http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	response := w.rpcHandler.HandleRequest(ctx, &rpcReq)
 
-	// Send response
-	rw.Header().Set("Content-Type", "application/json")
-
-	// Set compression header
-	if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
-		rw.Header().Set("Content-Encoding", "gzip")
+	// Ensure response is properly formed
+	if response == nil {
+		response = &RPCResponse{
+			JSONRPC: "2.0",
+			Error: &RPCError{
+				Code:    InternalError,
+				Message: "Internal server error",
+			},
+			ID: rpcReq.ID,
+		}
 	}
 
-	json.NewEncoder(rw).Encode(response)
+	// Send response
+	rw.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(rw).Encode(response); err != nil {
+		log.Printf("Failed to encode RPC response: %v", err)
+		w.sendRPCError(rw, rpcReq.ID, InternalError, "Failed to encode response")
+		return
+	}
 }
 
 // sendRPCError sends a JSON-RPC error response

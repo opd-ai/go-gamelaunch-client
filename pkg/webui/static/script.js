@@ -86,7 +86,18 @@ class GameClient {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
             
-            const result = await response.json();
+            // Debug: Log raw response text
+            const responseText = await response.text();
+            console.log(`RPC response for ${method}:`, responseText);
+            
+            let result;
+            try {
+                result = JSON.parse(responseText);
+            } catch (parseError) {
+                console.error(`Failed to parse JSON response for ${method}:`, parseError);
+                console.error('Raw response:', responseText);
+                throw new Error(`Invalid JSON response: ${parseError.message}`);
+            }
             
             if (result.error) {
                 throw new Error(`RPC Error ${result.error.code}: ${result.error.message}`);

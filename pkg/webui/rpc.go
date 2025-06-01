@@ -131,17 +131,13 @@ func (h *RPCHandler) handleTilesetFetch(ctx context.Context, params json.RawMess
 // handleGameGetState returns current game state
 func (h *RPCHandler) handleGameGetState(ctx context.Context, params json.RawMessage) (interface{}, error) {
 	if h.webui.view == nil {
-		return nil, fmt.Errorf("no view available")
-	}
-
-	state := h.webui.view.GetCurrentState()
-	if state == nil {
 		return map[string]interface{}{
 			"state":     nil,
 			"connected": false,
 		}, nil
 	}
 
+	state := h.webui.view.GetCurrentState()
 	return map[string]interface{}{
 		"state":     state,
 		"connected": true,
