@@ -234,9 +234,203 @@ class GameClient {
         this.polling = false;
     }
     
+    render() {
+        if (!this.gameState || !this.ctx) return;
+        
+        const cellWidth = this.tileset ? this.tileset.tile_width : 12;
+        const cellHeight = this.tileset ? this.tileset.tile_height : 16;
+        
+        // Clear canvas
+        this.ctx.fillStyle = '#000000';
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        
+        // Render cells
+        for (let y = 0; y < this.gameState.buffer.length; y++) {
+            const row = this.gameState.buffer[y];
+            for (let x = 0; x < row.length; x++) {
+                const cell = row[x];
+                this.renderCell(x, y, cell, cellWidth, cellHeight);
+            }
+        }
+        
+        // Render cursor
+        this.renderCursor(cellWidth, cellHeight);
+    }
+    
+    renderTextFallback(x, y, width, height, cell) {
+        // Calculate optimal font size to fit the tile dimensions
+        let fontSize = Math.min(width * 0.8, height * 0.8);
+        fontSize = Math.max(fontSize, 8);
+        
+        this.ctx.font = `${fontSize}px monospace`;
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+        
+        if (cell.bold) {
+            this.ctx.font = `bold ${fontSize}px monospace`;
+        }
+        
+        // Handle background color first
+        let bgColor = cell.bg_color || '#000000';
+        let fgColor = cell.fg_color || '#FFFFFF';
+        
+        // Handle inverse rendering
+        if (cell.inverse) {
+            // Swap foreground and background colors
+            [bgColor, fgColor] = [fgColor, bgColor];
+        }
+        
+        // Always render background if it's not the default black
+        if (bgColor !== '#000000') {
+            this.ctx.fillStyle = bgColor;
+            this.ctx.fillRect(x, y, width, height);
+        }
+        
+        // Set text color
+        this.ctx.fillStyle = fgColor;
+        
+        // Calculate text position (centered in tile)
+        const textX = x + width / 2;
+        const textY = y + height / 2;
+        
+        // Handle character rendering - support both char codes and strings
+        let char;
+        if (typeof cell.char === 'number') {
+            char = String.fromCharCode(cell.char);
+        } else {
+            char = cell.char || ' ';
+        }
+        
+        if (char !== ' ') {
+            // Measure text to ensure it fits
+            const metrics = this.ctx.measureText(char);
+            
+            // If text is too wide, reduce font size
+            if (metrics.width > width * 0.9) {
+                fontSize = fontSize * (width * 0.9) / metrics.width;
+                this.ctx.font = cell.bold ? `bold ${fontSize}px monospace` : `${fontSize}px monospace`;
+            }
+            
+            // Add text shadow for better readability on colored backgrounds
+            if (bgColor !== '#000000') {
+                this.ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+                this.ctx.shadowOffsetX = 1;
+                this.ctx.shadowOffsetY = 1;
+                this.ctx.shadowBlur = 1;
+            }
+            
+            // Render the character
+            this.ctx.fillText(char, textX, textY);
+            
+            // Reset shadow
+            this.ctx.shadowColor = 'transparent';
+            this.ctx.shadowOffsetX = 0;
+            this.ctx.shadowOffsetY = 0;
+            this.ctx.shadowBlur = 0;
+        }
+        
+        // Handle blinking effect
+        if (cell.blink) {
+            const blink = Math.floor(Date.now() / 500) % 2;
+            if (!blink) {
+                // Hide character on blink
+                this.ctx.fillStyle = bgColor;
+                this.ctx.fillRect(x, y, width, height);
+            }
+        }
+    }
+
+    renderCell(x, y, cell, cellWidth, cellHeight) {
+        const pixelX = x * cellWidth;
+        const pixelY = y * cellHeight;
+        
+        // Always render background first
+        const bgColor = cell.bg_color || '#000000';
+        if (bgColor !== '#000000') {
+            this.ctx.fillStyle = bgColor;
+            this.ctx.fillRect(pixelX, pixelY, cellWidth, cellHeight);
+        }
+        
+        // Character rendering with tileset or text fallback
+        if (this.tilesetImage && this.tileset && 
+            cell.tile_x !== undefined && cell.tile_y !== undefined) {
+            // Render using tileset
+            const srcX = cell.tile_x * this.tileset.tile_width;
+            const srcY = cell.tile_y * this.tileset.tile_height;
+            
+            // For colored tileset rendering, we might need to apply color tinting
+            if (cell.fg_color && cell.fg_color !== '#FFFFFF') {
+                // Save the current composite operation
+                const oldComposite = this.ctx.globalCompositeOperation;
+                
+                // Draw the tile
+                this.ctx.drawImage(
+                    this.tilesetImage,
+                    srcX, srcY, this.tileset.tile_width, this.tileset.tile_height,
+                    pixelX, pixelY, cellWidth, cellHeight
+                );
+                
+                // Apply color tinting
+                this.ctx.globalCompositeOperation = 'multiply';
+                this.ctx.fillStyle = cell.fg_color;
+                this.ctx.fillRect(pixelX, pixelY, cellWidth, cellHeight);
+                
+                // Restore composite operation
+                this.ctx.globalCompositeOperation = oldComposite;
+            } else {
+                // Normal tileset rendering
+                this.ctx.drawImage(
+                    this.tilesetImage,
+                    srcX, srcY, this.tileset.tile_width, this.tileset.tile_height,
+                    pixelX, pixelY, cellWidth, cellHeight
+                );
+            }
+        } else {
+            // Text fallback rendering
+            this.renderTextFallback(pixelX, pixelY, cellWidth, cellHeight, cell);
+        }
+    }
+
+    // Add helper method for color parsing and validation
+    parseColor(color) {
+        // Handle various color formats
+        if (!color) return '#000000';
+        
+        // If it's already a hex color, return as-is
+        if (color.startsWith('#')) {
+            return color;
+        }
+        
+        // Handle RGB values
+        if (color.startsWith('rgb')) {
+            return color;
+        }
+        
+        // Handle named colors or convert from other formats
+        const namedColors = {
+            'black': '#000000',
+            'red': '#FF0000',
+            'green': '#00FF00',
+            'yellow': '#FFFF00',
+            'blue': '#0000FF',
+            'magenta': '#FF00FF',
+            'cyan': '#00FFFF',
+            'white': '#FFFFFF',
+            'bright_black': '#808080',
+            'bright_red': '#FF8080',
+            'bright_green': '#80FF80',
+            'bright_yellow': '#FFFF80',
+            'bright_blue': '#8080FF',
+            'bright_magenta': '#FF80FF',
+            'bright_cyan': '#80FFFF',
+            'bright_white': '#FFFFFF'
+        };
+        
+        return namedColors[color.toLowerCase()] || color;
+    }
+
     applyChanges(diff) {
         if (!this.gameState) {
-            // If we don't have initial state, treat as full update
             this.gameState = {
                 buffer: [],
                 width: 0,
@@ -267,7 +461,16 @@ class GameClient {
                 });
             }
             
-            this.gameState.buffer[change.y][change.x] = change.cell;
+            // Parse and normalize colors
+            const cell = { ...change.cell };
+            if (cell.fg_color) {
+                cell.fg_color = this.parseColor(cell.fg_color);
+            }
+            if (cell.bg_color) {
+                cell.bg_color = this.parseColor(cell.bg_color);
+            }
+            
+            this.gameState.buffer[change.y][change.x] = cell;
         });
         
         // Update dimensions
@@ -276,115 +479,6 @@ class GameClient {
         
         // Resize canvas if needed
         this.resizeCanvas();
-    }
-    
-    render() {
-        if (!this.gameState || !this.ctx) return;
-        
-        const cellWidth = this.tileset ? this.tileset.tile_width : 12;
-        const cellHeight = this.tileset ? this.tileset.tile_height : 16;
-        
-        // Clear canvas
-        this.ctx.fillStyle = '#000000';
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-        
-        // Render cells
-        for (let y = 0; y < this.gameState.buffer.length; y++) {
-            const row = this.gameState.buffer[y];
-            for (let x = 0; x < row.length; x++) {
-                const cell = row[x];
-                this.renderCell(x, y, cell, cellWidth, cellHeight);
-            }
-        }
-        
-        // Render cursor
-        this.renderCursor(cellWidth, cellHeight);
-    }
-    
-    renderCell(x, y, cell, cellWidth, cellHeight) {
-        const pixelX = x * cellWidth;
-        const pixelY = y * cellHeight;
-        
-        // Background
-        if (cell.bg_color && cell.bg_color !== '#000000') {
-            this.ctx.fillStyle = cell.bg_color;
-            this.ctx.fillRect(pixelX, pixelY, cellWidth, cellHeight);
-        }
-        
-        // Character rendering
-        if (this.tilesetImage && this.tileset && cell.tile_x !== undefined && cell.tile_y !== undefined) {
-            // Render using tileset
-            const srcX = cell.tile_x * this.tileset.tile_width;
-            const srcY = cell.tile_y * this.tileset.tile_height;
-            
-            this.ctx.drawImage(
-                this.tilesetImage,
-                srcX, srcY, this.tileset.tile_width, this.tileset.tile_height,
-                pixelX, pixelY, cellWidth, cellHeight
-            );
-        } else if (cell.char && cell.char !== ' ') {
-            // Text fallback - size font to fit tile dimensions
-            this.renderTextFallback(pixelX, pixelY, cellWidth, cellHeight, cell);
-        }
-    }
-
-    renderTextFallback(x, y, width, height, cell) {
-        // Calculate optimal font size to fit the tile dimensions
-        // Start with a base size and adjust to fit
-        let fontSize = Math.min(width * 0.8, height * 0.8);
-        
-        // Ensure minimum readable size
-        fontSize = Math.max(fontSize, 8);
-        
-        // Set font properties for monospace rendering
-        this.ctx.font = `${fontSize}px monospace`;
-        this.ctx.textAlign = 'center';
-        this.ctx.textBaseline = 'middle';
-        
-        // Apply text styling
-        if (cell.bold) {
-            this.ctx.font = `bold ${fontSize}px monospace`;
-        }
-        
-        // Set text color
-        this.ctx.fillStyle = cell.fg_color || '#FFFFFF';
-        
-        // Handle inverse rendering
-        if (cell.inverse) {
-            // Swap foreground and background
-            const bgColor = cell.bg_color || '#000000';
-            const fgColor = cell.fg_color || '#FFFFFF';
-            
-            // Fill background with foreground color
-            this.ctx.fillStyle = fgColor;
-            this.ctx.fillRect(x, y, width, height);
-            
-            // Set text color to background color
-            this.ctx.fillStyle = bgColor;
-        }
-        
-        // Calculate text position (centered in tile)
-        const textX = x + width / 2;
-        const textY = y + height / 2;
-        
-        // Measure text to ensure it fits
-        const char = String.fromCharCode(cell.char);
-        const metrics = this.ctx.measureText(char);
-        
-        // If text is too wide, reduce font size
-        if (metrics.width > width * 0.9) {
-            fontSize = fontSize * (width * 0.9) / metrics.width;
-            this.ctx.font = cell.bold ? `bold ${fontSize}px monospace` : `${fontSize}px monospace`;
-        }
-        
-        // Render the character
-        this.ctx.fillText(char, textX, textY);
-        
-        // Handle blinking effect (if needed)
-        if (cell.blink) {
-            // Could implement blinking by toggling visibility
-            // For now, just render normally
-        }
     }
 
     renderCursor(cellWidth, cellHeight) {
