@@ -8,4 +8,3 @@ prompt: fmt
 godoc:
 	godocdown -o pkg/dgclient/DOC.md pkg/dgclient
 	godocdown -o pkg/tui/DOC.md pkg/tui
-	godocdown -o pkg/webui/DOC.md pkg/webui
