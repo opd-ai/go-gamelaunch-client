@@ -185,3 +185,8 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - Inspired by dgamelaunch and various roguelike game servers
 - Built with golang.org/x/crypto/ssh for SSH connectivity
 - Uses tcell for terminal handling
+Donate Monero(The only good cryptocurrency) to support development
+==================================================================
+
+ - `monero:43H3Uqnc9rfEsJjUXZYmam45MbtWmREFSANAWY5hijY4aht8cqYaT2BCNhfBhua5XwNdx9Tb6BEdt4tjUHJDwNW5H7mTiwe`
+
